@@ -7,6 +7,7 @@
   import CreatePost from "./components/CreatePost.svelte";
   import EditPost from "./components/EditPost.svelte";
   import Profile from "./components/Profile.svelte";
+  import AuthGuard from "./components/AuthGuard.svelte";
   import { userStore } from "./stores/userStore";
   import { updateUserActivity } from './stores/userStore';
   import { onMount } from "svelte";
@@ -47,6 +48,8 @@
 </script>
 
 <Router {url}>
+  <Route path="/login" component={Login} />
+  <Route path="/register" component={Register} />
   <nav>
     <div class="container">
       <div class="brand">
@@ -66,11 +69,10 @@
     </div>
   </nav>
 
+  <AuthGuard>
   <main>
     <div class="container">
       <Route path="/" component={Home} />
-      <Route path="/login" component={Login} />
-      <Route path="/register" component={Register} />
       <Route path="/post/:id" let:params>
         <BlogPost id={params.id} />
       </Route>
@@ -81,6 +83,7 @@
       <Route path="/profile" component={Profile} />
     </div>
   </main>
+    </AuthGuard>
 
   <footer>
     <div class="container">

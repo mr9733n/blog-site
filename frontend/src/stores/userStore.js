@@ -10,7 +10,7 @@ const INACTIVITY_THRESHOLD = 30000; // 30 секунд
 let lastUserActivity = Date.now();
 
 // Функция для проверки срока действия токена
-function isTokenExpired(token, bufferSeconds = 0) {
+export function isTokenExpired(token, bufferSeconds = 0) {
   if (!token) return true;
 
   try {
