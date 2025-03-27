@@ -162,7 +162,17 @@ def update_token_lifetime():
     # Update setting
     User.update_token_lifetime(user_id, lifetime)
 
-    return jsonify({"msg": "Настройки успешно обновлены", "token_lifetime": lifetime}), 200
+    # Создаем новый токен с обновленным временем жизни
+    access_token = create_access_token(
+        identity=current_user_id,
+        expires_delta=datetime.timedelta(seconds=lifetime)
+    )
+
+    return jsonify({
+        "msg": "Настройки успешно обновлены",
+        "token_lifetime": lifetime,
+        "access_token": access_token  # Возвращаем новый токен
+    }), 200
 
 
 # Add this after initializing jwt

@@ -5,7 +5,8 @@ const storedToken = localStorage.getItem('authToken');
 let initialUser = null;
 
 // Время неактивности в миллисекундах, после которого не обновляем токен
-const INACTIVITY_THRESHOLD = 300000; // 5 минут
+// Измените в userStore.js
+const INACTIVITY_THRESHOLD = 30000; // 30 секунд
 let lastUserActivity = Date.now();
 
 // Функция для проверки срока действия токена
@@ -83,6 +84,39 @@ async function authFetch(url, options = {}) {
     throw new Error('Необходима авторизация');
   }
 
+  // Проверяем срок действия токена ПЕРЕД запросом
+  if (isTokenExpired(token)) {
+    console.log('Токен истек, проверяем необходимость обновления');
+    // Проверка времени неактивности для истекшего токена
+    const currentTime = Date.now();
+    const inactiveTime = currentTime - lastUserActivity;
+
+    // Если пользователь был неактивен слишком долго, выходим
+    if (inactiveTime > INACTIVITY_THRESHOLD) {
+      console.log(`Пользователь был неактивен ${inactiveTime/1000} секунд, выход`);
+      // Выход пользователя
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('refreshToken');
+      userStore.set(null);
+      window.location.href = '/login';
+      throw new Error('Сессия истекла из-за неактивности. Пожалуйста, войдите снова.');
+    }
+
+    // Если пользователь активен, предварительно обновляем токен
+    const refreshSuccess = await api.refreshToken();
+    if (!refreshSuccess) {
+      // Выход при неудачном обновлении
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('refreshToken');
+      userStore.set(null);
+      window.location.href = '/login';
+      throw new Error('Не удалось обновить сессию. Пожалуйста, войдите снова.');
+    }
+
+    // Получаем новый обновленный токен
+    token = localStorage.getItem('authToken');
+  }
+
   // Убедимся, что заголовки инициализированы
   if (!options.headers) {
     options.headers = {};
@@ -91,44 +125,17 @@ async function authFetch(url, options = {}) {
   try {
     options.headers['Authorization'] = `Bearer ${token}`;
     const response = await fetch(url, options);
+    console.log(`Response status for ${url}:`, response.status);
 
-    // Если получили ошибку авторизации
+    // Если все еще получаем ошибку авторизации после обновления токена
     if (response.status === 401 || response.status === 422) {
-      // Обновляем время активности при явном запросе
-      updateUserActivity();
-
-      // Проверяем, не превышено ли время неактивности
-      const currentTime = Date.now();
-      const inactiveTime = currentTime - lastUserActivity;
-
-      // Если пользователь был неактивен слишком долго, не обновляем токен
-      if (inactiveTime > INACTIVITY_THRESHOLD) {
-        console.log(`Пользователь был неактивен ${inactiveTime/1000} секунд, выход`);
-        // Выход пользователя
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        userStore.set(null);
-        // Здесь можно добавить перенаправление на /login,
-        // если у вас есть доступ к маршрутизатору
-        window.location.href = '/login';
-        throw new Error('Сессия истекла из-за неактивности. Пожалуйста, войдите снова.');
-      }
-
-      // Иначе пытаемся обновить токен
-      const refreshSuccess = await api.refreshToken();
-      if (refreshSuccess) {
-        // Повторяем запрос с новым токеном
-        const newToken = localStorage.getItem('authToken');
-        options.headers['Authorization'] = `Bearer ${newToken}`;
-        return fetch(url, options);
-      } else {
-        // Выход пользователя при неудачном обновлении токена
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        userStore.set(null);
-        window.location.href = '/login';
-        throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
-      }
+      console.log('Ошибка авторизации после попытки обновления токена');
+      // Выход пользователя в любом случае, если все еще получаем 401
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('refreshToken');
+      userStore.set(null);
+      window.location.href = '/login';
+      throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
     }
 
     return response;
@@ -137,7 +144,6 @@ async function authFetch(url, options = {}) {
     throw error;
   }
 }
-
 
 export const api = {
   // Вход пользователя
@@ -477,8 +483,14 @@ async updateTokenLifetime(lifetime) {
 
     const result = await response.json();
 
-    // Force refresh the token to apply new lifetime immediately
-    await this.refreshToken();
+    // Сохраняем новый токен, если он пришел с сервера
+    if (result.access_token) {
+      localStorage.setItem('authToken', result.access_token);
+      console.log('Токен обновлен с новым сроком жизни');
+    } else {
+      // Если токен не пришел, принудительно обновляем через refresh
+      await this.refreshToken();
+    }
 
     localStorage.setItem('tokenLifetime', lifetime.toString());
     return result;
