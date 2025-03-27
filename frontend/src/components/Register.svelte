@@ -80,6 +80,7 @@
           disabled={loading}
           placeholder="Придумайте имя пользователя"
           required
+          autocomplete="username"
         />
       </div>
 
@@ -92,6 +93,7 @@
           disabled={loading}
           placeholder="Введите ваш email"
           required
+          autocomplete="email"
         />
       </div>
 

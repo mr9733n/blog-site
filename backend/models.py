@@ -92,26 +92,25 @@ class User:
         commit_db()
         return default_lifetime
 
-
     @staticmethod
-    def update_token_lifetime(user_id, lifetime):
-        """Update token lifetime setting for a user (in seconds)"""
+    def update_token_settings(user_id, token_lifetime, refresh_token_lifetime):
+        """Update token lifetime settings for a user"""
         db = get_db()
-        # Check if setting exists
+        # Проверяем, существуют ли настройки
         setting = query_db(
-            'SELECT token_lifetime FROM user_settings WHERE user_id = ?',
+            'SELECT * FROM user_settings WHERE user_id = ?',
             [user_id], one=True
         )
 
         if setting:
             db.execute(
-                'UPDATE user_settings SET token_lifetime = ? WHERE user_id = ?',
-                [lifetime, user_id]
+                'UPDATE user_settings SET token_lifetime = ?, refresh_token_lifetime = ? WHERE user_id = ?',
+                [token_lifetime, refresh_token_lifetime, user_id]
             )
         else:
             db.execute(
-                'INSERT INTO user_settings (user_id, token_lifetime) VALUES (?, ?)',
-                [user_id, lifetime]
+                'INSERT INTO user_settings (user_id, token_lifetime, refresh_token_lifetime) VALUES (?, ?, ?)',
+                [user_id, token_lifetime, refresh_token_lifetime]
             )
         commit_db()
         return True

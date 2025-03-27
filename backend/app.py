@@ -5,8 +5,7 @@ import datetime
 
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-
+from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 from config import get_config
 from models import User, Post, Comment
 from dotenv import load_dotenv
@@ -127,8 +126,15 @@ def login():
 
 
 @app.route('/api/refresh', methods=['POST'])
-@jwt_required(refresh=True)
+@jwt_required()  # Вместо jwt_required(refresh=True)
 def refresh():
+    # Получить claims из текущего токена
+    current_token = get_jwt()
+
+    # Проверить, что это refresh токен
+    if current_token.get('token_type') != 'refresh':
+        return jsonify({"msg": "Требуется refresh token"}), 401
+
     current_user_id = get_jwt_identity()
     # Convert to int for database lookup
     user_id = int(current_user_id)
@@ -145,35 +151,44 @@ def refresh():
     return jsonify(access_token=access_token, token_lifetime=token_lifetime), 200
 
 
-@app.route('/api/settings/token-lifetime', methods=['PUT'])
+@app.route('/api/settings/token-settings', methods=['PUT'])
 @jwt_required()
-def update_token_lifetime():
+def update_token_settings():
     current_user_id = get_jwt_identity()
     user_id = int(current_user_id)
 
     data = request.get_json()
-    lifetime = data.get('token_lifetime')
-    logger.debug(f"DEBUG: token-lifetime: {lifetime}")
+    token_lifetime = data.get('token_lifetime')
+    refresh_token_lifetime = data.get('refresh_token_lifetime')
 
-    # Validate input
-    if not lifetime or not isinstance(lifetime, int) or lifetime < 300 or lifetime > 86400:
+    # Валидация входных данных
+    if not token_lifetime or not isinstance(token_lifetime, int) or token_lifetime < 300 or token_lifetime > 86400:
         return jsonify({"msg": "Недопустимое значение времени жизни токена. Должно быть от 5 минут до 24 часов."}), 400
 
-    # Update setting
-    User.update_token_lifetime(user_id, lifetime)
+    if not refresh_token_lifetime or not isinstance(refresh_token_lifetime, int) or refresh_token_lifetime < 86400 or refresh_token_lifetime > 2592000:
+        return jsonify({"msg": "Недопустимое значение времени жизни refresh токена. Должно быть от 1 до 30 дней."}), 400
 
-    # Создаем новый токен с обновленным временем жизни
+    # Обновление настроек в базе данных
+    User.update_token_settings(user_id, token_lifetime, refresh_token_lifetime)
+
+    # Создаем новые токены с обновленными настройками
     access_token = create_access_token(
         identity=current_user_id,
-        expires_delta=datetime.timedelta(seconds=lifetime)
+        expires_delta=datetime.timedelta(seconds=token_lifetime)
+    )
+
+    refresh_token = create_refresh_token(
+        identity=current_user_id,
+        expires_delta=datetime.timedelta(seconds=refresh_token_lifetime)
     )
 
     return jsonify({
         "msg": "Настройки успешно обновлены",
-        "token_lifetime": lifetime,
-        "access_token": access_token  # Возвращаем новый токен
+        "token_lifetime": token_lifetime,
+        "refresh_token_lifetime": refresh_token_lifetime,
+        "access_token": access_token,
+        "refresh_token": refresh_token
     }), 200
-
 
 # Add this after initializing jwt
 @jwt.invalid_token_loader

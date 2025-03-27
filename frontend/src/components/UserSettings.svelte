@@ -4,15 +4,21 @@
   import { api, userStore } from '../stores/userStore';
 
   let tokenLifetime = 1800; // Default 30 minutes
+  let refreshTokenLifetime = 15 * 24 * 60 * 60; // Default 15 days
   let saving = false;
   let success = false;
   let error = null;
 
   onMount(async () => {
-    // Get current token lifetime from localStorage
+    // Получение текущих настроек из localStorage
     const savedLifetime = localStorage.getItem('tokenLifetime');
     if (savedLifetime) {
       tokenLifetime = parseInt(savedLifetime);
+    }
+
+    const savedRefreshLifetime = localStorage.getItem('refreshTokenLifetime');
+    if (savedRefreshLifetime) {
+      refreshTokenLifetime = parseInt(savedRefreshLifetime);
     }
   });
 
@@ -22,8 +28,13 @@
     success = false;
 
     try {
-      await api.updateTokenLifetime(tokenLifetime);
+      // Обновление настроек на сервере
+      await api.updateTokenSettings(tokenLifetime, refreshTokenLifetime);
+
+      // Сохранение в localStorage
       localStorage.setItem('tokenLifetime', tokenLifetime.toString());
+      localStorage.setItem('refreshTokenLifetime', refreshTokenLifetime.toString());
+
       success = true;
 
       // Auto-hide success message after 3 seconds
@@ -40,8 +51,10 @@
   function formatLifetime(seconds) {
     if (seconds < 3600) {
       return `${Math.round(seconds / 60)} минут`;
-    } else {
+    } else if (seconds < 86400) {
       return `${Math.round(seconds / 3600 * 10) / 10} часов`;
+    } else {
+      return `${Math.round(seconds / 86400 * 10) / 10} дней`;
     }
   }
 </script>
@@ -67,6 +80,27 @@
     <p class="setting-description">
       Это время, в течение которого вы остаетесь авторизованными без необходимости повторного входа.
       Более короткий период повышает безопасность, более длинный - удобство использования.
+    </p>
+  </div>
+
+  <div class="setting-group">
+    <label for="refresh-token-lifetime">Запомнить меня: <span class="lifetime-value">{formatLifetime(refreshTokenLifetime)}</span></label>
+    <div class="range-container">
+      <span class="range-label">1 день</span>
+      <input
+        type="range"
+        id="refresh-token-lifetime"
+        min="86400"
+        max="2592000"
+        step="86400"
+        bind:value={refreshTokenLifetime}
+        class="slider"
+      />
+      <span class="range-label">30 дней</span>
+    </div>
+    <p class="setting-description">
+      Максимальное время, в течение которого вы можете вернуться в систему без повторного ввода пароля.
+      Меньшее значение повышает безопасность вашего аккаунта.
     </p>
   </div>
 

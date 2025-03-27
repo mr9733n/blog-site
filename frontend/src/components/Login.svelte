@@ -47,6 +47,7 @@
           disabled={loading}
           placeholder="Введите имя пользователя"
           required
+          autocomplete="username"
         />
       </div>
 

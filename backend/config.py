@@ -16,7 +16,7 @@ class Config:
     CORS_ORIGINS = ['http://localhost:8080', 'http://localhost:5000', 'http://localhost:3000']
 
     JWT_ACCESS_TOKEN_EXPIRES = 30 * 60  # 30 minutes in seconds
-    JWT_REFRESH_TOKEN_EXPIRES = 30 * 24 * 60 * 60  # 30 days in seconds
+    JWT_REFRESH_TOKEN_EXPIRES = 15 * 24 * 60 * 60  # 15 days in seconds
 
 
 class DevelopmentConfig(Config):

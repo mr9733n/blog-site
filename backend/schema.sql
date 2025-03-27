@@ -51,5 +51,7 @@ CREATE INDEX idx_comments_author ON comments(author_id);
 CREATE TABLE user_settings (
     user_id INTEGER PRIMARY KEY,
     token_lifetime INTEGER DEFAULT 1800,  -- 30 minutes in seconds
+    refresh_token_lifetime INTEGER DEFAULT 1296000; -- 15 дней по умолчанию
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
+

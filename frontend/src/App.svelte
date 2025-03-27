@@ -48,8 +48,6 @@
 </script>
 
 <Router {url}>
-  <Route path="/login" component={Login} />
-  <Route path="/register" component={Register} />
   <nav>
     <div class="container">
       <div class="brand">
@@ -69,21 +67,26 @@
     </div>
   </nav>
 
-  <AuthGuard>
   <main>
     <div class="container">
+      <!-- Публичные маршруты - доступны всем -->
       <Route path="/" component={Home} />
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
       <Route path="/post/:id" let:params>
         <BlogPost id={params.id} />
       </Route>
-      <Route path="/create" component={CreatePost} />
-      <Route path="/edit/:id" let:params>
-        <EditPost id={params.id} />
-      </Route>
-      <Route path="/profile" component={Profile} />
+
+      <!-- Защищенные маршруты - только для авторизованных пользователей -->
+      <AuthGuard>
+        <Route path="/create" component={CreatePost} />
+        <Route path="/edit/:id" let:params>
+          <EditPost id={params.id} />
+        </Route>
+        <Route path="/profile" component={Profile} />
+      </AuthGuard>
     </div>
   </main>
-    </AuthGuard>
 
   <footer>
     <div class="container">

@@ -79,8 +79,9 @@ export function checkTokenExpiration() {
 
 // Вспомогательная функция для запросов с авторизацией
 async function authFetch(url, options = {}) {
-  const token = localStorage.getItem('authToken');
+  let token = localStorage.getItem('authToken');
   if (!token) {
+    userStore.set(null); // Сбрасываем состояние, если нет токена
     throw new Error('Необходима авторизация');
   }
 
@@ -94,22 +95,14 @@ async function authFetch(url, options = {}) {
     // Если пользователь был неактивен слишком долго, выходим
     if (inactiveTime > INACTIVITY_THRESHOLD) {
       console.log(`Пользователь был неактивен ${inactiveTime/1000} секунд, выход`);
-      // Выход пользователя
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      userStore.set(null);
-      window.location.href = '/login';
+      logout(); // Используем функцию logout вместо повторения кода
       throw new Error('Сессия истекла из-за неактивности. Пожалуйста, войдите снова.');
     }
 
     // Если пользователь активен, предварительно обновляем токен
     const refreshSuccess = await api.refreshToken();
     if (!refreshSuccess) {
-      // Выход при неудачном обновлении
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      userStore.set(null);
-      window.location.href = '/login';
+      logout(); // Используем функцию logout
       throw new Error('Не удалось обновить сессию. Пожалуйста, войдите снова.');
     }
 
@@ -130,11 +123,7 @@ async function authFetch(url, options = {}) {
     // Если все еще получаем ошибку авторизации после обновления токена
     if (response.status === 401 || response.status === 422) {
       console.log('Ошибка авторизации после попытки обновления токена');
-      // Выход пользователя в любом случае, если все еще получаем 401
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      userStore.set(null);
-      window.location.href = '/login';
+      logout(); // Используем функцию logout
       throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
     }
 
@@ -143,6 +132,15 @@ async function authFetch(url, options = {}) {
     console.error('Fetch error:', error);
     throw error;
   }
+}
+
+// Добавьте эту функцию для централизованного выхода
+function logout() {
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('tokenLifetime');
+  userStore.set(null);
+  window.location.href = '/login';
 }
 
 export const api = {
@@ -465,38 +463,37 @@ async createPost(title, content) {
       throw error;
     }
   },
-  // Add this function to the api object in userStore.js
-async updateTokenLifetime(lifetime) {
-  try {
-    const response = await authFetch(`${API_URL}/settings/token-lifetime`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ token_lifetime: lifetime })
-    });
+	async updateTokenSettings(tokenLifetime, refreshTokenLifetime) {
+	  try {
+		const response = await authFetch(`${API_URL}/settings/token-settings`, {
+		  method: 'PUT',
+		  headers: {
+			'Content-Type': 'application/json'
+		  },
+		  body: JSON.stringify({
+			token_lifetime: tokenLifetime,
+			refresh_token_lifetime: refreshTokenLifetime
+		  })
+		});
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.msg || 'Ошибка обновления настроек');
-    }
+		if (!response.ok) {
+		  const error = await response.json();
+		  throw new Error(error.msg || 'Ошибка обновления настроек');
+		}
 
-    const result = await response.json();
+		const result = await response.json();
 
-    // Сохраняем новый токен, если он пришел с сервера
-    if (result.access_token) {
-      localStorage.setItem('authToken', result.access_token);
-      console.log('Токен обновлен с новым сроком жизни');
-    } else {
-      // Если токен не пришел, принудительно обновляем через refresh
-      await this.refreshToken();
-    }
+		// Сохраняем новые токены
+		if (result.access_token) {
+		  localStorage.setItem('authToken', result.access_token);
+		  localStorage.setItem('refreshToken', result.refresh_token);
+		  console.log('Токены обновлены с новыми настройками срока жизни');
+		}
 
-    localStorage.setItem('tokenLifetime', lifetime.toString());
-    return result;
-  } catch (error) {
-    console.error('Error updating token lifetime:', error);
-    throw error;
-  }
-}
+		return result;
+	  } catch (error) {
+		console.error('Error updating token settings:', error);
+		throw error;
+	  }
+	}
 };
