@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # Сервис для бэкенда (Flask)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    restart: always
+
+  # Сервис для фронтенда (Svelte в продакшн-режиме через Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/prod.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+    restart: always
+
+volumes:
+  backend_data:

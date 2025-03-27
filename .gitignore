@@ -1,0 +1,5 @@
+.idea/*
+backend/__pycache__/*
+.env
+blog-site.zip
+database.db

@@ -1,0 +1,44 @@
+
+services:
+  # Сервис для бэкенда (Flask)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: blog-backend
+    volumes:
+      - ./backend:/app
+      - backend_data:/app/instance
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=app.py
+      - FLASK_DEBUG=1
+    restart: unless-stopped
+
+  # Сервис для фронтенда (Svelte)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: blog-frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Nginx как прокси
+  nginx:
+    image: nginx:alpine
+    container_name: blog-nginx
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    ports:
+      - "36166:80"
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  backend_data:
