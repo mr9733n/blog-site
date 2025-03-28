@@ -510,132 +510,132 @@ async createPost(title, content) {
     }
   },
 	async updateTokenSettings(tokenLifetime, refreshTokenLifetime) {
+		  try {
+			const response = await authFetch(`${API_URL}/settings/token-settings`, {
+			  method: 'PUT',
+			  headers: {
+				'Content-Type': 'application/json'
+			  },
+			  body: JSON.stringify({
+				token_lifetime: tokenLifetime,
+				refresh_token_lifetime: refreshTokenLifetime
+			  })
+			});
+
+			if (!response.ok) {
+			  const error = await response.json();
+			  throw new Error(error.msg || 'Ошибка обновления настроек');
+			}
+
+			const result = await response.json();
+
+			// Сохраняем новые токены
+			if (result.access_token) {
+			  localStorage.setItem('authToken', result.access_token);
+			  localStorage.setItem('refreshToken', result.refresh_token);
+			  console.log('Токены обновлены с новыми настройками срока жизни');
+			}
+
+			return result;
+		  } catch (error) {
+			console.error('Error updating token settings:', error);
+			throw error;
+		  }
+		},
+		async savePost(postId) {
 	  try {
-		const response = await authFetch(`${API_URL}/settings/token-settings`, {
-		  method: 'PUT',
-		  headers: {
-			'Content-Type': 'application/json'
-		  },
-		  body: JSON.stringify({
-			token_lifetime: tokenLifetime,
-			refresh_token_lifetime: refreshTokenLifetime
-		  })
+		const response = await authFetch(`${API_URL}/posts/${postId}/save`, {
+		  method: 'POST'
 		});
 
 		if (!response.ok) {
 		  const error = await response.json();
-		  throw new Error(error.msg || 'Ошибка обновления настроек');
+		  throw new Error(error.msg || 'Ошибка сохранения поста');
 		}
 
-		const result = await response.json();
-
-		// Сохраняем новые токены
-		if (result.access_token) {
-		  localStorage.setItem('authToken', result.access_token);
-		  localStorage.setItem('refreshToken', result.refresh_token);
-		  console.log('Токены обновлены с новыми настройками срока жизни');
-		}
-
-		return result;
+		return await response.json();
 	  } catch (error) {
-		console.error('Error updating token settings:', error);
+		console.error('Error saving post:', error);
 		throw error;
 	  }
 	},
-	async savePost(postId) {
-  try {
-    const response = await authFetch(`${API_URL}/posts/${postId}/save`, {
-      method: 'POST'
-    });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.msg || 'Ошибка сохранения поста');
-    }
+	async unsavePost(postId) {
+	  try {
+		const response = await authFetch(`${API_URL}/posts/${postId}/unsave`, {
+		  method: 'POST'
+		});
 
-    return await response.json();
-  } catch (error) {
-    console.error('Error saving post:', error);
-    throw error;
-  }
-},
+		if (!response.ok) {
+		  const error = await response.json();
+		  throw new Error(error.msg || 'Ошибка удаления поста из сохранённых');
+		}
 
-async unsavePost(postId) {
-  try {
-    const response = await authFetch(`${API_URL}/posts/${postId}/unsave`, {
-      method: 'POST'
-    });
+		return await response.json();
+	  } catch (error) {
+		console.error('Error unsaving post:', error);
+		throw error;
+	  }
+	},
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.msg || 'Ошибка удаления поста из сохранённых');
-    }
+	async getSavedPosts() {
+	  try {
+		const response = await authFetch(`${API_URL}/saved/posts`);
 
-    return await response.json();
-  } catch (error) {
-    console.error('Error unsaving post:', error);
-    throw error;
-  }
-},
+		if (!response.ok) {
+		  throw new Error('Ошибка загрузки сохранённых постов');
+		}
 
-async getSavedPosts() {
-  try {
-    const response = await authFetch(`${API_URL}/saved/posts`);
+		return await response.json();
+	  } catch (error) {
+		console.error('Error fetching saved posts:', error);
+		return [];
+	  }
+	},
 
-    if (!response.ok) {
-      throw new Error('Ошибка загрузки сохранённых постов');
-    }
+	async isPostSaved(postId) {
+	  try {
+		const response = await authFetch(`${API_URL}/posts/${postId}/is_saved`);
 
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching saved posts:', error);
-    return [];
-  }
-},
+		if (!response.ok) {
+		  throw new Error('Ошибка проверки сохранения поста');
+		}
 
-async isPostSaved(postId) {
-  try {
-    const response = await authFetch(`${API_URL}/posts/${postId}/is_saved`);
+		const data = await response.json();
+		return data.is_saved;
+	  } catch (error) {
+		console.error('Error checking if post is saved:', error);
+		return false;
+	  }
+	},
 
-    if (!response.ok) {
-      throw new Error('Ошибка проверки сохранения поста');
-    }
 
-    const data = await response.json();
-    return data.is_saved;
-  } catch (error) {
-    console.error('Error checking if post is saved:', error);
-    return false;
-  }
-},
+	async uploadImage(file, postId = null) {
+	  try {
+		// Создаем FormData для отправки файла
+		const formData = new FormData();
+		formData.append('file', file);
 
-  async uploadImage(file, postId = null) {
-    try {
-      // Создаем FormData для отправки файла
-      const formData = new FormData();
-      formData.append('file', file);
+		if (postId) {
+		  formData.append('post_id', postId);
+		}
 
-      if (postId) {
-        formData.append('post_id', postId);
-      }
+		const response = await authFetch(`${API_URL}/images/upload`, {
+		  method: 'POST',
+		  body: formData
+		});
 
-      const response = await authFetch(`${API_URL}/images/upload`, {
-        method: 'POST',
-        // Не указываем Content-Type, браузер сам установит с правильной boundary
-        body: formData
-      });
+		if (!response.ok) {
+		  const error = await response.json();
+		  throw new Error(error.msg || 'Ошибка загрузки изображения');
+		}
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.msg || 'Ошибка загрузки изображения');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      throw error;
-    }
-  },
+		return await response.json();
+	  } catch (error) {
+		console.error('Error uploading image:', error);
+		throw error;
+	  }
+	},
 
   async getPostImages(postId) {
     try {

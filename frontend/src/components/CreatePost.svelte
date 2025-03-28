@@ -129,72 +129,62 @@
   }
 
   // Function to handle file selection
-  async function handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+async function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
 
-    // Check if the file is an image
-    if (!file.type.startsWith('image/')) {
-      error = "Выбранный файл не является изображением";
-      return;
-    }
-
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      error = "Размер файла не должен превышать 5MB";
-      return;
-    }
-
-    // Clear any previous errors
-    error = "";
-    imageUploadProgress = 0;
-
-    // Read the file as base64
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        // In a real app, you would upload to your server here
-        // For this example, we'll simulate the upload
-
-        // Simulate upload progress
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 10;
-          imageUploadProgress = progress;
-          if (progress >= 100) {
-            clearInterval(interval);
-
-            // Create a simulated URL (in a real app, this would be the URL returned from your server)
-            const imageUrl = URL.createObjectURL(file);
-            uploadedImages = [...uploadedImages, {
-              name: file.name,
-              url: imageUrl,
-              size: formatFileSize(file.size)
-            }];
-
-            // Insert markdown for the image
-            insertMarkdown('image');
-
-            // Reset progress
-            setTimeout(() => {
-              imageUploadProgress = null;
-            }, 500);
-          }
-        }, 100);
-
-      } catch (err) {
-        error = "Ошибка загрузки изображения: " + err.message;
-        imageUploadProgress = null;
-      }
-    };
-
-    reader.onerror = () => {
-      error = "Ошибка чтения файла";
-      imageUploadProgress = null;
-    };
-
-    reader.readAsDataURL(file);
+  // Проверка типа файла
+  if (!file.type.startsWith('image/')) {
+    error = "Выбранный файл не является изображением";
+    return;
   }
+
+  // Проверка размера файла
+  if (file.size > 5 * 1024 * 1024) {
+    error = "Размер файла не должен превышать 5MB";
+    return;
+  }
+
+  // Очистка ошибок и показ индикатора загрузки
+  error = "";
+  imageUploadProgress = 0;
+
+  try {
+    // Вместо создания локального blob-URL, загружаем файл на сервер
+    const simulateProgress = setInterval(() => {
+      imageUploadProgress += 10;
+      if (imageUploadProgress >= 90) clearInterval(simulateProgress);
+    }, 100);
+
+    // Загрузка файла на сервер через API
+    const response = await api.uploadImage(file);
+    clearInterval(simulateProgress);
+    imageUploadProgress = 100;
+
+    // Получаем URL изображения с сервера
+    const imageUrl = response.image.url_path;
+
+    // Добавляем в список загруженных изображений
+    uploadedImages = [...uploadedImages, {
+      name: file.filename || file.name,
+      url: imageUrl,
+      size: formatFileSize(file.size),
+      id: response.image.id
+    }];
+
+    // Вставляем URL в markdown
+    const insertion = `![${file.name}](${imageUrl})`;
+    // ...код для вставки в текстовую область...
+
+    // Сбрасываем индикатор прогресса
+    setTimeout(() => {
+      imageUploadProgress = null;
+    }, 500);
+  } catch (err) {
+    error = "Ошибка загрузки изображения: " + err.message;
+    imageUploadProgress = null;
+  }
+}
 
   function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' bytes';

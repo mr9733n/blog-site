@@ -7,10 +7,12 @@
   let user = null;
   let userInfo = null;
   let userPosts = [];
+  let userImages = [];
   let loading = true;
   let error = null;
-  let activeTab = 'posts'; // 'posts', 'saved', or 'settings'
+  let activeTab = 'posts'; // 'posts', 'saved', 'images', or 'settings'
   let savedPosts = [];
+  let imageDeleteLoading = false;
 
   userStore.subscribe(value => {
     user = value;
@@ -52,6 +54,29 @@
     }
   }
 
+  async function loadUserImages() {
+    try {
+      console.log("Loading images for user ID:", userInfo.id);
+      userImages = await api.getUserImages(userInfo.id);
+      console.log("Received user images:", userImages);
+
+      // Если массив пустой, добавим дополнительную проверку через прямой fetch
+      if (userImages.length === 0) {
+        console.log("No images found in API response, attempting direct fetch");
+        try {
+          const directResponse = await fetch(`/api/users/${userInfo.id}/images`);
+          const directData = await directResponse.json();
+          console.log("Direct fetch response:", directData);
+        } catch (directError) {
+          console.error("Direct fetch error:", directError);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading user images:", err);
+      error = err.message;
+    }
+  }
+
   async function unsavePost(postId) {
     try {
       await api.unsavePost(postId);
@@ -59,6 +84,21 @@
       savedPosts = savedPosts.filter(post => post.id !== postId);
     } catch (err) {
       error = err.message;
+    }
+  }
+
+  async function deleteImage(imageId) {
+    if (imageDeleteLoading) return;
+
+    imageDeleteLoading = true;
+    try {
+      await api.deleteImage(imageId);
+      // Удаляем изображение из списка
+      userImages = userImages.filter(img => img.id !== imageId);
+    } catch (err) {
+      error = err.message;
+    } finally {
+      imageDeleteLoading = false;
     }
   }
 
@@ -76,8 +116,21 @@
     }).format(date);
   }
 
+  // Функция для форматирования размера файла
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' bytes';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+
   $: if (activeTab === 'saved' && user) {
     loadSavedPosts();
+  }
+
+  // Обработчик изменения активной вкладки
+  $: if (activeTab === 'images' && user && userInfo) {
+    console.log("Images tab activated, loading images");
+    loadUserImages();
   }
 </script>
 
@@ -120,6 +173,12 @@
           on:click={() => setTab('saved')}
         >
           Сохраненные
+        </button>
+        <button
+          class="tab {activeTab === 'images' ? 'active' : ''}"
+          on:click={() => setTab('images')}
+        >
+          Изображения
         </button>
         <button
           class="tab {activeTab === 'settings' ? 'active' : ''}"
@@ -177,6 +236,56 @@
                       <Link to={`/post/${post.id}`} class="view-btn">Просмотр</Link>
                       <button class="unsave-btn" on:click={() => unsavePost(post.id)}>
                         Удалить из сохранённых
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {:else if activeTab === 'images'}
+          <div class="tab-panel">
+            {#if loading}
+              <div class="loading-images">
+                <p>Загрузка изображений...</p>
+              </div>
+            {:else if userImages.length === 0}
+              <div class="empty-images">
+                <p>У вас пока нет загруженных изображений.</p>
+                <p class="info-text">Изображения можно загрузить при создании или редактировании поста.</p>
+                <button class="btn-refresh" on:click={() => loadUserImages()}>Обновить список</button>
+              </div>
+            {:else}
+              <div class="images-grid">
+                {#each userImages as image}
+                  <div class="image-card">
+                    <div class="image-preview clickable-image">
+                      <img src={image.url_path} alt={image.original_filename} class="clickable-image" />
+                    </div>
+                    <div class="image-info">
+                      <p class="image-filename" title={image.original_filename}>{image.original_filename}</p>
+                      <p class="image-meta">
+                        <span class="image-date">{formatDate(image.upload_date)}</span>
+                        <span class="image-size">{formatFileSize(image.filesize)}</span>
+                      </p>
+                      <p class="image-post">
+                        {#if image.post_id}
+                          <Link to={`/post/${image.post_id}`}>Связанный пост</Link>
+                        {:else}
+                          <span class="no-post">Нет связанного поста</span>
+                        {/if}
+                      </p>
+                    </div>
+                    <div class="image-actions">
+                      <a href={image.url_path} target="_blank" rel="noopener noreferrer" class="view-image-btn">
+                        Просмотр
+                      </a>
+                      <button
+                        class="delete-image-btn {imageDeleteLoading ? 'loading' : ''}"
+                        on:click={() => deleteImage(image.id)}
+                        disabled={imageDeleteLoading}
+                      >
+                        {imageDeleteLoading ? 'Удаление...' : 'Удалить'}
                       </button>
                     </div>
                   </div>
@@ -284,6 +393,7 @@
   .profile-tabs {
     display: flex;
     border-bottom: 1px solid #dee2e6;
+    flex-wrap: wrap;
   }
 
   .tab {
@@ -318,10 +428,32 @@
     background-color: #f9f9f9;
   }
 
-  .empty-posts {
+  .empty-posts, .empty-images, .loading-images {
     text-align: center;
     padding: 2rem;
     color: #6c757d;
+  }
+
+  .info-text {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-top: 0.5rem;
+  }
+
+  .btn-refresh {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-refresh:hover {
+    background-color: #5a6268;
   }
 
   .create-post-btn {
@@ -424,5 +556,157 @@
 
   .unsave-btn:hover {
     background-color: #c82333;
+  }
+
+  /* Стили для секции изображений */
+  .images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .image-card {
+    background-color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .image-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.15);
+  }
+
+  .image-preview {
+    height: 160px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f8f9fa;
+    position: relative;
+  }
+
+  .image-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .image-info {
+    padding: 1rem;
+  }
+
+  .image-filename {
+    margin: 0 0 0.5rem;
+    font-weight: bold;
+    color: #343a40;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .image-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin: 0 0 0.5rem;
+  }
+
+  .image-post {
+    font-size: 0.85rem;
+    margin: 0;
+  }
+
+  .image-post a {
+    color: #007bff;
+    text-decoration: none;
+  }
+
+  .image-post a:hover {
+    text-decoration: underline;
+  }
+
+  .no-post {
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  .image-actions {
+    display: flex;
+    border-top: 1px solid #dee2e6;
+  }
+
+  .view-image-btn, .delete-image-btn {
+    flex: 1;
+    padding: 0.5rem;
+    text-align: center;
+    border: none;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-decoration: none;
+  }
+
+  .view-image-btn {
+    background-color: #17a2b8;
+    color: white;
+  }
+
+  .view-image-btn:hover {
+    background-color: #138496;
+  }
+
+  .delete-image-btn {
+    background-color: #dc3545;
+    color: white;
+  }
+
+  .delete-image-btn:hover {
+    background-color: #c82333;
+  }
+
+  .delete-image-btn.loading {
+    background-color: #6c757d;
+    cursor: not-allowed;
+  }
+
+  /* Адаптивность для мобильных устройств */
+  @media (max-width: 576px) {
+    .profile-tabs {
+      flex-direction: column;
+    }
+
+    .tab {
+      width: 100%;
+      text-align: center;
+      padding: 0.75rem;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .tab.active {
+      border-bottom: 1px solid #dee2e6;
+      border-left: 3px solid #007bff;
+    }
+
+    .post-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .post-meta {
+      margin: 0.5rem 0;
+    }
+
+    .post-actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .images-grid {
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
   }
 </style>

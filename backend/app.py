@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, g, send_from_directory, send_file
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 
 from config import get_config
-from models import User, Post, Comment, SavedPost, Image
+from models import User, Post, Comment, SavedPost, Image, get_db
 
 load_dotenv()
 
@@ -607,7 +607,16 @@ def get_user_images(user_id):
 
     try:
         images = Image.get_by_author(user_id, limit)
-        return jsonify([dict(image) for image in images])
+
+        # Преобразуем объекты Row в словари и удаляем бинарные данные
+        result = []
+        for image in images:
+            image_dict = dict(image)
+            if 'image_data' in image_dict:
+                del image_dict['image_data']  # Удаляем бинарные данные
+            result.append(image_dict)
+
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Ошибка получения изображений пользователя: {str(e)}")
         return jsonify({"msg": "Произошла ошибка при получении изображений"}), 500

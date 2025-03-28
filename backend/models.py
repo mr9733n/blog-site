@@ -364,7 +364,13 @@ class Image:
     @staticmethod
     def get_by_author(author_id, limit=None):
         """Получить изображения пользователя"""
-        query = 'SELECT * FROM images WHERE author_id = ? ORDER BY upload_date DESC'
+        query = '''
+            SELECT id, filename, original_filename, filetype, filesize, 
+                   post_id, author_id, upload_date, url_path
+            FROM images 
+            WHERE author_id = ? 
+            ORDER BY upload_date DESC
+        '''
 
         if limit:
             query += f' LIMIT {limit}'
