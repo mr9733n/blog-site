@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 from config import get_config
-from models import User, Post, Comment
+from models import User, Post, Comment, SavedPost
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,8 +34,8 @@ app = Flask(__name__)
 app.config.from_object(get_config())
 logger = configure_logging(app)
 
-logging.debug("Server time:", datetime.datetime.now().isoformat())
-logging.debug("JWT_SECRET_KEY:", app.config['JWT_SECRET_KEY'])
+logging.debug(f"Server time: {datetime.datetime.now().isoformat()}")
+logging.debug(f"JWT_SECRET_KEY: {app.config['JWT_SECRET_KEY']}")
 # Настройка CORS
 CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}})
 
@@ -93,7 +93,7 @@ def register():
     except ValueError as e:
         return jsonify({"msg": str(e)}), 400
     except Exception as e:
-        app.logger.error(f"Ошибка регистрации: {str(e)}")
+        logger.error(f"Ошибка регистрации: {str(e)}")
         return jsonify({"msg": "Произошла ошибка при регистрации"}), 500
 
 
@@ -242,22 +242,35 @@ def create_post():
 @jwt_required()
 def update_post(post_id):
     current_user_id = get_jwt_identity()
+    user_id = int(current_user_id)
     data = request.get_json()
+
+    logger.debug(f"Запрос на редактирование поста {post_id} от пользователя {user_id}")
 
     # Проверка существования поста
     post = Post.get_by_id(post_id)
     if not post:
+        logger.error(f"Пост {post_id} не найден")
         return jsonify({"msg": "Пост не найден"}), 404
 
     # Проверка прав на редактирование
-    if post['author_id'] != current_user_id:
+    if not Post.can_user_edit_post(post_id, user_id):
+        logger.error(f"Пользователь {user_id} не имеет прав для редактирования поста {post_id}")
         return jsonify({"msg": "Нет прав для редактирования"}), 403
 
     try:
+        # Валидация данных
+        if not data.get('title', '').strip():
+            return jsonify({"msg": "Заголовок не может быть пустым"}), 400
+
+        if not data.get('content', '').strip():
+            return jsonify({"msg": "Содержание поста не может быть пустым"}), 400
+
         Post.update(post_id, data['title'], data['content'])
+        logger.info(f"Пост {post_id} успешно обновлен пользователем {user_id}")
         return jsonify({"msg": "Пост успешно обновлен"})
     except Exception as e:
-        logger.error(f"Ошибка обновления поста: {str(e)}")
+        logger.error(f"Ошибка обновления поста {post_id}: {str(e)}")
         return jsonify({"msg": "Произошла ошибка при обновлении поста"}), 500
 
 
@@ -383,27 +396,103 @@ def update_comment(comment_id):
 @jwt_required()
 def delete_comment(comment_id):
     current_user_id = get_jwt_identity()
-    # Convert string ID back to integer
-    current_user_id = int(current_user_id)
+    user_id = int(current_user_id)
+
+    logger.debug(f"Запрос на удаление комментария {comment_id} от пользователя {user_id}")
 
     # Проверка существования комментария
     comment = Comment.get_by_id(comment_id)
     if not comment:
+        logger.error(f"Комментарий {comment_id} не найден")
         return jsonify({"msg": "Комментарий не найден"}), 404
 
-    # Получаем пост для проверки, является ли пользователь автором поста
-    post = Post.get_by_id(comment['post_id'])
-
-    # Проверка прав на удаление (может удалить автор комментария или автор поста)
-    if comment['author_id'] != current_user_id and post['author_id'] != current_user_id:
+    # Проверка прав на удаление
+    if not Comment.can_user_delete_comment(comment_id, user_id):
+        logger.error(f"Пользователь {user_id} не имеет прав для удаления комментария {comment_id}")
         return jsonify({"msg": "Нет прав для удаления комментария"}), 403
 
     try:
         Comment.delete(comment_id)
+        logger.info(f"Комментарий {comment_id} успешно удален пользователем {user_id}")
         return jsonify({"msg": "Комментарий успешно удален"})
     except Exception as e:
-        logger.error(f"Ошибка удаления комментария: {str(e)}")
+        logger.error(f"Ошибка удаления комментария {comment_id}: {str(e)}")
         return jsonify({"msg": "Произошла ошибка при удалении комментария"}), 500
+
+
+# Добавить пост в сохранённые
+@app.route('/api/posts/<int:post_id>/save', methods=['POST'])
+@jwt_required()
+def save_post(post_id):
+    current_user_id = get_jwt_identity()
+    user_id = int(current_user_id)
+
+    # Проверка существования поста
+    post = Post.get_by_id(post_id)
+    if not post:
+        return jsonify({"msg": "Пост не найден"}), 404
+
+    try:
+        result = SavedPost.save_post(user_id, post_id)
+
+        if not result:
+            return jsonify({"msg": "Пост уже сохранен"}), 200
+
+        logger.info(f"Пользователь {user_id} сохранил пост {post_id}")
+        return jsonify({"msg": "Пост добавлен в сохранённые"}), 200
+    except Exception as e:
+        logger.error(f"Ошибка сохранения поста: {str(e)}")
+        return jsonify({"msg": "Произошла ошибка при сохранении поста"}), 500
+
+
+# Удалить пост из сохранённых
+@app.route('/api/posts/<int:post_id>/unsave', methods=['POST'])
+@jwt_required()
+def unsave_post(post_id):
+    current_user_id = get_jwt_identity()
+    user_id = int(current_user_id)
+
+    try:
+        result = SavedPost.unsave_post(user_id, post_id)
+
+        if not result:
+            return jsonify({"msg": "Пост не найден в сохранённых"}), 404
+
+        logger.info(f"Пользователь {user_id} удалил пост {post_id} из сохранённых")
+        return jsonify({"msg": "Пост удален из сохранённых"}), 200
+    except Exception as e:
+        logger.error(f"Ошибка удаления из сохранённых: {str(e)}")
+        return jsonify({"msg": "Произошла ошибка при удалении из сохранённых"}), 500
+
+
+# Получить сохранённые посты пользователя
+@app.route('/api/saved/posts', methods=['GET'])
+@jwt_required()
+def get_saved_posts():
+    current_user_id = get_jwt_identity()
+    user_id = int(current_user_id)
+
+    try:
+        saved_posts = SavedPost.get_saved_posts(user_id)
+        return jsonify([dict(post) for post in saved_posts])
+    except Exception as e:
+        logger.error(f"Ошибка получения сохранённых постов: {str(e)}")
+        return jsonify([])
+
+
+# Проверить, сохранен ли пост пользователем
+@app.route('/api/posts/<int:post_id>/is_saved', methods=['GET'])
+@jwt_required()
+def is_post_saved(post_id):
+    current_user_id = get_jwt_identity()
+    user_id = int(current_user_id)
+
+    try:
+        is_saved = SavedPost.is_post_saved_by_user(user_id, post_id)
+        return jsonify({"is_saved": is_saved})
+    except Exception as e:
+        logger.error(f"Ошибка проверки сохранения поста: {str(e)}")
+        return jsonify({"is_saved": False, "error": str(e)}), 500
 
 
 if __name__ == '__main__':

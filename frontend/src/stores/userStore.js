@@ -495,5 +495,71 @@ async createPost(title, content) {
 		console.error('Error updating token settings:', error);
 		throw error;
 	  }
-	}
+	},
+	async savePost(postId) {
+  try {
+    const response = await authFetch(`${API_URL}/posts/${postId}/save`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.msg || 'Ошибка сохранения поста');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error saving post:', error);
+    throw error;
+  }
+},
+
+async unsavePost(postId) {
+  try {
+    const response = await authFetch(`${API_URL}/posts/${postId}/unsave`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.msg || 'Ошибка удаления поста из сохранённых');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error unsaving post:', error);
+    throw error;
+  }
+},
+
+async getSavedPosts() {
+  try {
+    const response = await authFetch(`${API_URL}/saved/posts`);
+
+    if (!response.ok) {
+      throw new Error('Ошибка загрузки сохранённых постов');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching saved posts:', error);
+    return [];
+  }
+},
+
+async isPostSaved(postId) {
+  try {
+    const response = await authFetch(`${API_URL}/posts/${postId}/is_saved`);
+
+    if (!response.ok) {
+      throw new Error('Ошибка проверки сохранения поста');
+    }
+
+    const data = await response.json();
+    return data.is_saved;
+  } catch (error) {
+    console.error('Error checking if post is saved:', error);
+    return false;
+  }
+}
 };

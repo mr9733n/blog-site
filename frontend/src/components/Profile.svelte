@@ -12,6 +12,7 @@
   let activeTab = 'posts'; // 'posts', 'saved', or 'settings'
   let tokenExpiresIn = 0;
   let timer;
+  let savedPosts = [];
 
   userStore.subscribe(value => {
     user = value;
@@ -37,6 +38,9 @@
 
 		updateTokenTime();
 		    timer = setInterval(updateTokenTime, 1000);
+	    if (user) {
+      await loadSavedPosts();
+    }
 
     } catch (err) {
       error = err.message;
@@ -65,6 +69,24 @@ function updateTokenTime() {
   }
 }
 
+  async function loadSavedPosts() {
+    try {
+      savedPosts = await api.getSavedPosts();
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  async function unsavePost(postId) {
+    try {
+      await api.unsavePost(postId);
+      // Удаляем пост из списка
+      savedPosts = savedPosts.filter(post => post.id !== postId);
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
   function setTab(tab) {
     activeTab = tab;
   }
@@ -77,6 +99,10 @@ function updateTokenTime() {
       month: 'long',
       day: 'numeric'
     }).format(date);
+  }
+
+    $: if (activeTab === 'saved' && user) {
+    loadSavedPosts();
   }
 </script>
 
@@ -155,10 +181,34 @@ function updateTokenTime() {
               </div>
             {/if}
           </div>
-        {:else if activeTab === 'saved'}
-          <div class="tab-panel">
-            <p>Функция сохранения постов пока недоступна.</p>
+{:else if activeTab === 'saved'}
+  <div class="tab-panel">
+    {#if savedPosts.length === 0}
+      <div class="empty-posts">
+        <p>У вас пока нет сохранённых постов.</p>
+      </div>
+    {:else}
+      <div class="post-list">
+        {#each savedPosts as post}
+          <div class="post-item">
+            <div class="post-title">
+              <Link to={`/post/${post.id}`}>{post.title}</Link>
+            </div>
+            <div class="post-meta">
+              <span class="post-author">Автор: {post.username}</span>
+              <span class="post-date">{formatDate(post.created_at)}</span>
+            </div>
+            <div class="post-actions">
+              <Link to={`/post/${post.id}`} class="view-btn">Просмотр</Link>
+              <button class="unsave-btn" on:click={() => unsavePost(post.id)}>
+                Удалить из сохранённых
+              </button>
+            </div>
           </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
         {:else if activeTab === 'settings'}
           <div class="tab-panel">
             <UserSettings />

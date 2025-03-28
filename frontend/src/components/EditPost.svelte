@@ -28,7 +28,7 @@
       post = await api.getPost(id);
 
       // Проверка прав на редактирование
-      if (post.author_id !== user.id) {
+      if (post.author_id !== parseInt(user.id)) {
         navigate(`/post/${id}`, { replace: true });
         return;
       }

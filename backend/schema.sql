@@ -34,24 +34,27 @@ CREATE TABLE comments (
     FOREIGN KEY (author_id) REFERENCES users (id)
 );
 
+-- Таблица для сохранённых постов
+CREATE TABLE saved_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    post_id INTEGER NOT NULL,
+    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE,
+    UNIQUE(user_id, post_id)
+);
+
 -- Индексы для ускорения поиска
 CREATE INDEX idx_posts_author ON posts(author_id);
 CREATE INDEX idx_comments_post ON comments(post_id);
 CREATE INDEX idx_comments_author ON comments(author_id);
-
--- Вставка тестовых данных (опционально)
--- INSERT INTO users (username, password, email) VALUES
--- ('test', 'pbkdf2:sha256:150000$test', 'test@test.test');
-
--- INSERT INTO posts (title, content, author_id) VALUES
--- ('Первый пост', 'Содержание первого поста...', 1),
--- ('Второй пост', 'Содержание второго поста...', 1);
+CREATE INDEX idx_saved_posts_user ON saved_posts(user_id);
 
 -- Add this to schema.sql
 CREATE TABLE user_settings (
     user_id INTEGER PRIMARY KEY,
     token_lifetime INTEGER DEFAULT 1800,  -- 30 minutes in seconds
-    refresh_token_lifetime INTEGER DEFAULT 1296000; -- 15 дней по умолчанию
+    refresh_token_lifetime INTEGER DEFAULT 1296000, -- 15 дней по умолчанию
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
-

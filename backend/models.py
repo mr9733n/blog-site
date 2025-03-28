@@ -70,27 +70,33 @@ class User:
             return False
         return check_password_hash(user['password'], password)
 
-
     @staticmethod
     def get_token_lifetime(user_id):
         """Get token lifetime setting for a user (in seconds)"""
-        setting = query_db(
-            'SELECT token_lifetime FROM user_settings WHERE user_id = ?',
-            [user_id], one=True
-        )
-        if setting:
-            return setting['token_lifetime']
+        try:
+            setting = query_db(
+                'SELECT token_lifetime FROM user_settings WHERE user_id = ?',
+                [user_id], one=True
+            )
+            if setting:
+                return setting['token_lifetime']
 
-        # Create default setting if not exists
-        db = get_db()
-        from app import app
-        default_lifetime = app.config['JWT_ACCESS_TOKEN_EXPIRES']
-        db.execute(
-            'INSERT INTO user_settings (user_id, token_lifetime) VALUES (?, ?)',
-            [user_id, default_lifetime]
-        )
-        commit_db()
-        return default_lifetime
+            # Create default setting if not exists
+            db = get_db()
+            from app import app
+            default_lifetime = app.config['JWT_ACCESS_TOKEN_EXPIRES']
+            db.execute(
+                'INSERT INTO user_settings (user_id, token_lifetime) VALUES (?, ?)',
+                [user_id, default_lifetime]
+            )
+            commit_db()
+            return default_lifetime
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                # Таблица не существует, используем значение по умолчанию
+                from app import app
+                return app.config['JWT_ACCESS_TOKEN_EXPIRES']
+            raise  # Пробрасываем другие ошибки
 
     @staticmethod
     def update_token_settings(user_id, token_lifetime, refresh_token_lifetime):
@@ -200,6 +206,74 @@ class Post:
             [post_id]
         )
 
+    @staticmethod
+    def can_user_edit_post(post_id, user_id):
+        """Проверить, может ли пользователь редактировать пост"""
+        post = Post.get_by_id(post_id)
+        if not post:
+            return False
+        return post['author_id'] == user_id
+
+# Добавим класс SavedPost в models.py
+
+class SavedPost:
+    """Модель для сохраненных постов"""
+
+    @staticmethod
+    def is_post_saved_by_user(user_id, post_id):
+        """Проверить, сохранён ли пост пользователем"""
+        return query_db(
+            'SELECT 1 FROM saved_posts WHERE user_id = ? AND post_id = ?',
+            [user_id, post_id],
+            one=True
+        ) is not None
+
+    @staticmethod
+    def save_post(user_id, post_id):
+        """Добавить пост в сохранённые"""
+        # Проверяем, не сохранен ли уже пост
+        if SavedPost.is_post_saved_by_user(user_id, post_id):
+            return False
+
+        db = get_db()
+        now = datetime.now().isoformat()
+        db.execute(
+            'INSERT INTO saved_posts (user_id, post_id, saved_at) VALUES (?, ?, ?)',
+            [user_id, post_id, now]
+        )
+        commit_db()
+        return True
+
+    @staticmethod
+    def unsave_post(user_id, post_id):
+        """Удалить пост из сохранённых"""
+        # Проверяем, существует ли запись
+        if not SavedPost.is_post_saved_by_user(user_id, post_id):
+            return False
+
+        db = get_db()
+        db.execute(
+            'DELETE FROM saved_posts WHERE user_id = ? AND post_id = ?',
+            [user_id, post_id]
+        )
+        commit_db()
+        return True
+
+    @staticmethod
+    def get_saved_posts(user_id):
+        """Получить сохранённые посты пользователя"""
+        return query_db(
+            '''SELECT posts.*, users.username, saved_posts.saved_at
+               FROM posts 
+               JOIN saved_posts ON posts.id = saved_posts.post_id
+               JOIN users ON posts.author_id = users.id 
+               WHERE saved_posts.user_id = ? 
+               ORDER BY saved_posts.saved_at DESC''',
+            [user_id]
+        )
+
+
+# Дополненный класс Comment в models.py
 
 class Comment:
     """Модель комментария к посту"""
@@ -261,3 +335,22 @@ class Comment:
                ORDER BY comments.created_at DESC''',
             [author_id]
         )
+
+    @staticmethod
+    def can_user_delete_comment(comment_id, user_id):
+        """Проверить, может ли пользователь удалить комментарий
+        (если он автор комментария или автор поста)"""
+        comment = Comment.get_by_id(comment_id)
+        if not comment:
+            return False
+
+        # Если пользователь - автор комментария
+        if comment['author_id'] == user_id:
+            return True
+
+        # Если пользователь - автор поста
+        post = Post.get_by_id(comment['post_id'])
+        if post and post['author_id'] == user_id:
+            return True
+
+        return False

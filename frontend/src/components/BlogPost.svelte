@@ -16,10 +16,13 @@
   let confirmDelete = false;
   let editingCommentId = null;
   let editCommentContent = "";
+    let isSaved = false;
 
   userStore.subscribe(value => {
     user = value;
   });
+
+
 
   onMount(async () => {
     try {
@@ -28,11 +31,42 @@
 
       // Загрузка комментариев
       await loadComments();
+      if (post && user) {
+      await checkIfSaved();
+    }
     } catch (err) {
       error = err.message;
       loading = false;
     }
   });
+
+  async function checkIfSaved() {
+    if (user && post) {
+      try {
+        isSaved = await api.isPostSaved(post.id);
+      } catch (err) {
+        console.error("Ошибка проверки сохранения:", err);
+      }
+    }
+  }
+
+  async function savePost() {
+    try {
+      await api.savePost(post.id);
+      isSaved = true;
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  async function unsavePost() {
+    try {
+      await api.unsavePost(post.id);
+      isSaved = false;
+    } catch (err) {
+      error = err.message;
+    }
+  }
 
   // Функция для загрузки комментариев
   async function loadComments() {
@@ -153,7 +187,7 @@
 
   // Проверка, является ли пользователь автором поста
   function isAuthor() {
-    return user && post && post.author_id === user.id;
+    return user && post && post.author_id === parseInt(user.id);
   }
 </script>
 
@@ -177,6 +211,15 @@
             Опубликовано: <time>{formatDate(post.created_at)}</time>
           </div>
         </div>
+        <div class="post-save-action">
+  {#if user}
+    {#if isSaved}
+      <button class="btn-unsave" on:click={unsavePost}>Удалить из сохранённых</button>
+    {:else}
+      <button class="btn-save" on:click={savePost}>Сохранить</button>
+    {/if}
+  {/if}
+</div>
       </header>
 
       <div class="post-content">
