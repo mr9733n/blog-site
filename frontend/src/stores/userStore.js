@@ -171,7 +171,7 @@ export function logout() {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('tokenLifetime');
   userStore.set(null);
-  window.location.href = '/'; 
+  window.location.href = '/';
 }
 
 export const api = {
@@ -607,5 +607,123 @@ async isPostSaved(postId) {
     console.error('Error checking if post is saved:', error);
     return false;
   }
-}
+},
+
+  async uploadImage(file, postId = null) {
+    try {
+      // Создаем FormData для отправки файла
+      const formData = new FormData();
+      formData.append('file', file);
+
+      if (postId) {
+        formData.append('post_id', postId);
+      }
+
+      const response = await authFetch(`${API_URL}/images/upload`, {
+        method: 'POST',
+        // Не указываем Content-Type, браузер сам установит с правильной boundary
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.msg || 'Ошибка загрузки изображения');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw error;
+    }
+  },
+
+  async getPostImages(postId) {
+    try {
+      const response = await fetch(`${API_URL}/posts/${postId}/images`);
+
+      if (!response.ok) {
+        throw new Error('Ошибка получения изображений');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching post images:', error);
+      return [];
+    }
+  },
+
+  async getUserImages(userId, limit = null) {
+    try {
+      let url = `${API_URL}/users/${userId}/images`;
+
+      if (limit) {
+        url += `?limit=${limit}`;
+      }
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error('Ошибка получения изображений пользователя');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching user images:', error);
+      return [];
+    }
+  },
+
+  async deleteImage(imageId) {
+    try {
+      const response = await authFetch(`${API_URL}/images/${imageId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.msg || 'Ошибка удаления изображения');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      throw error;
+    }
+  },
+
+  async attachImageToPost(imageId, postId) {
+    try {
+      const response = await authFetch(`${API_URL}/images/${imageId}/post/${postId}`, {
+        method: 'PUT'
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.msg || 'Ошибка привязки изображения к посту');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error attaching image to post:', error);
+      throw error;
+    }
+  },
+
+  async detachImageFromPost(imageId) {
+    try {
+      const response = await authFetch(`${API_URL}/images/${imageId}/post`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.msg || 'Ошибка отвязки изображения от поста');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error detaching image from post:', error);
+      throw error;
+    }
+  }
 };

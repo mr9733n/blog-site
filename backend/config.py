@@ -18,17 +18,27 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = 30 * 60  # 30 minutes in seconds
     JWT_REFRESH_TOKEN_EXPIRES = 15 * 24 * 60 * 60  # 15 days in seconds
 
+    # Настройки для загрузки файлов
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload size
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
 
 class DevelopmentConfig(Config):
     """Конфигурация для разработки"""
     DEBUG = True
     LOG_LEVEL = logging.DEBUG
+    # Создаем папку для загрузок, если она не существует
+    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+
 
 class ProductionConfig(Config):
     """Конфигурация для продакшена"""
     DEBUG = False
     LOG_LEVEL = logging.INFO
     # В продакшене обязательно установите сложные секретные ключи через переменные окружения
+    # Создаем папку для загрузок, если она не существует
+    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
 
 
 # Выбор конфигурации в зависимости от переменной окружения

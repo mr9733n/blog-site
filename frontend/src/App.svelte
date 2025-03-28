@@ -1,5 +1,6 @@
 <script>
   import TokenRefreshIndicator from './components/TokenRefreshIndicator.svelte';
+  import ThemeToggle from './components/ThemeToggle.svelte';
   import { Router, Route, Link, navigate } from "svelte-routing";
   import Home from "./components/Home.svelte";
   import Login from "./components/Login.svelte";
@@ -39,12 +40,13 @@
   // Обработчик для клика по ссылкам
   function handleLinkClick() {
     updateUserActivity();
+    if (menuOpen) toggleMenu();
   }
 
-function handleLogout() {
-  logout();
-  navigate("/", { replace: true });
-}
+  function handleLogout() {
+    logout();
+    navigate("/", { replace: true });
+  }
 
   function toggleMenu() {
     menuOpen = !menuOpen;
@@ -54,24 +56,31 @@ function handleLogout() {
 <Router {url}>
   <TokenRefreshIndicator />
   <nav>
-    <div class="container">
-    <div class="brand">
-      <Link to="/" on:click={handleLinkClick}>Мой Блог</Link>
-    </div>
-    <button class="menu-toggle" on:click={toggleMenu}>
-      ☰
-    </button>
-      <ul class="nav-links {menuOpen ? 'open' : ''}">
-        <li><Link to="/" on:click={handleLinkClick}>Главная</Link></li>
-        {#if user}
-          <li><Link to="/create" on:click={handleLinkClick}>Новый пост</Link></li>
-          <li><Link to="/profile" on:click={handleLinkClick}>Профиль</Link></li>
-          <li><button on:click={() => { logout(); }}>Выйти</button></li>
-        {:else}
-          <li><Link to="/login" on:click={handleLinkClick}>Войти</Link></li>
+    <div class="container nav-container">
+      <div class="nav-left">
+        <div class="brand">
+          <Link to="/" on:click={handleLinkClick}>Мой Блог</Link>
+        </div>
+      </div>
 
-        {/if}
-      </ul>
+      <button class="menu-toggle" on:click={toggleMenu} aria-label="Toggle menu">
+        ☰
+      </button>
+
+      <div class="nav-right">
+        <ul class="nav-links {menuOpen ? 'open' : ''}">
+          <li><Link to="/" on:click={handleLinkClick}>Главная</Link></li>
+          {#if user}
+            <li><Link to="/create" on:click={handleLinkClick}>Новый пост</Link></li>
+            <li><Link to="/profile" on:click={handleLinkClick}>Профиль</Link></li>
+            <li><button on:click={() => { handleLogout(); handleLinkClick(); }}>Выйти</button></li>
+          {:else}
+            <li><Link to="/login" on:click={handleLinkClick}>Войти</Link></li>
+            <li><Link to="/register" on:click={handleLinkClick}>Регистрация</Link></li>
+          {/if}
+        </ul>
+        <ThemeToggle />
+      </div>
     </div>
   </nav>
 
@@ -104,30 +113,24 @@ function handleLogout() {
 </Router>
 
 <style>
-  :global(body) {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-      Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-    line-height: 1.6;
-    background-color: #f8f9fa;
-  }
-
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
-  }
-
   nav {
-    background-color: #333;
-    color: white;
+    background-color: var(--nav-bg);
+    color: var(--nav-text);
     padding: 1rem 0;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
   }
 
-  nav .container {
+  .nav-container {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+  }
+
+  .nav-left, .nav-right {
+    display: flex;
     align-items: center;
   }
 
@@ -137,7 +140,7 @@ function handleLogout() {
   }
 
   .brand :global(a) {
-    color: white;
+    color: var(--nav-text);
     text-decoration: none;
   }
 
@@ -152,31 +155,29 @@ function handleLogout() {
     margin-left: 1rem;
   }
 
-  .nav-links :global(a) {
-    color: white;
+  .nav-links :global(a), .nav-links button {
+    color: var(--nav-text);
     text-decoration: none;
     padding: 0.5rem;
     border-radius: 4px;
     transition: background-color 0.2s;
+    font-size: 0.9rem;
   }
 
-  .nav-links :global(a:hover) {
+  .nav-links :global(a:hover), .nav-links button:hover {
     background-color: rgba(255, 255, 255, 0.1);
+    text-decoration: none;
   }
 
   button {
     background: none;
     border: none;
-    color: white;
+    color: var(--nav-text);
     cursor: pointer;
     font-size: 1rem;
     padding: 0.5rem;
     border-radius: 4px;
     transition: background-color 0.2s;
-  }
-
-  button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
   }
 
   main {
@@ -185,8 +186,8 @@ function handleLogout() {
   }
 
   footer {
-    background-color: #333;
-    color: white;
+    background-color: var(--nav-bg);
+    color: var(--nav-text);
     padding: 1rem 0;
     text-align: center;
     margin-top: 2rem;
@@ -198,39 +199,39 @@ function handleLogout() {
     opacity: 0.8;
   }
 
+  .menu-toggle {
+    display: none;
+  }
+
   @media (max-width: 768px) {
-  .nav-links {
-    flex-direction: column;
-    position: absolute;
-    top: 60px;
-    right: 10px;
-    background-color: #333;
-    border-radius: 4px;
-    padding: 10px;
-    gap: 10px;
-    display: none;
-  }
+    .nav-links {
+      flex-direction: column;
+      position: absolute;
+      top: 60px;
+      right: 0;
+      left: 0;
+      background-color: var(--nav-bg);
+      border-radius: 0 0 4px 4px;
+      padding: 1rem;
+      gap: 1rem;
+      display: none;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+    }
 
-  .nav-links.open {
-    display: flex;
-  }
+    .nav-links.open {
+      display: flex;
+    }
 
-  .menu-toggle {
-    display: block;
-  }
-}
+    .menu-toggle {
+      display: block;
+      font-size: 1.5rem;
+    }
 
-@media (min-width: 769px) {
-  .menu-toggle {
-    display: none;
-  }
-}
-
-  .menu-toggle {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 1.5rem;
-    cursor: pointer;
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
   }
 </style>

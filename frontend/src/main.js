@@ -1,5 +1,6 @@
 import App from './App.svelte';
 import { updateUserActivity } from './stores/userStore';
+import './global.css';
 
 // Глобальное отслеживание активности пользователя
 window.addEventListener('click', updateUserActivity);
