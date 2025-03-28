@@ -2,25 +2,24 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { navigate } from 'svelte-routing';
-  import { userStore, isTokenExpired, updateUserActivity } from '../stores/userStore';
+  import { userStore, isTokenExpired, updateUserActivity, INACTIVITY_THRESHOLD  } from '../stores/userStore';
 
   // Интервал проверки токена каждые 10 секунд
   const CHECK_INTERVAL = 10000;
-  // Время неактивности в миллисекундах
-  const INACTIVITY_THRESHOLD = 30000; // 30 секунд
 
   let lastActivity = Date.now();
   let timer;
   let user;
 
   // Подписываемся на хранилище пользователя
-  userStore.subscribe(value => {
-    user = value;
-    // Если пользователь не авторизован, перенаправляем на страницу входа
-    if (!user) {
-      navigate('/login', { replace: true });
-    }
-  });
+userStore.subscribe(value => {
+  user = value;
+  const token = localStorage.getItem('authToken');
+  // If user is not authenticated or token is expired, redirect to login
+  if (!user || !token || isTokenExpired(token)) {
+    navigate('/login', { replace: true });
+  }
+});
 
   function checkToken() {
     if (!user) return;

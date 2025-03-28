@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 
 // Проверка наличия токена в localStorage при инициализации
 const storedToken = localStorage.getItem('authToken');
@@ -6,8 +6,10 @@ let initialUser = null;
 
 // Время неактивности в миллисекундах, после которого не обновляем токен
 // Измените в userStore.js
-const INACTIVITY_THRESHOLD = 30000; // 30 секунд
+export const INACTIVITY_THRESHOLD = 30000; // 30 seconds
 let lastUserActivity = Date.now();
+
+export const tokenRefreshLoading = writable(false);
 
 // Функция для проверки срока действия токена
 export function isTokenExpired(token, bufferSeconds = 0) {
@@ -52,6 +54,35 @@ if (storedToken) {
 }
 // Создаем хранилище с начальным значением
 export const userStore = writable(initialUser);
+
+export const tokenExpiration = derived(
+  userStore,
+  ($userStore, set) => {
+    const checkExpiration = () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) return set(0);
+
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(window.atob(base64));
+        set(Math.max(0, Math.floor(payload.exp - Date.now()/1000)));
+      } catch (e) {
+        console.error('Ошибка проверки токена', e);
+        set(0);
+      }
+    };
+
+    // Initial check
+    checkExpiration();
+
+    // Setup interval
+    const interval = setInterval(checkExpiration, 1000);
+
+    // Cleanup on unsubscribe
+    return () => clearInterval(interval);
+  }
+);
 
 // Функции API для работы с сервером
 const API_URL = '/api';
@@ -135,12 +166,12 @@ async function authFetch(url, options = {}) {
 }
 
 // Добавьте эту функцию для централизованного выхода
-function logout() {
+export function logout() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('tokenLifetime');
   userStore.set(null);
-  window.location.href = '/login';
+  window.location.href = '/'; 
 }
 
 export const api = {
@@ -200,6 +231,7 @@ export const api = {
 	},
 	async refreshToken() {
 	  try {
+		tokenRefreshLoading.set(true);
 		const refreshToken = localStorage.getItem('refreshToken');
 		if (!refreshToken) {
 		  throw new Error('No refresh token available');
@@ -229,6 +261,8 @@ export const api = {
 		localStorage.removeItem('tokenLifetime');
 		userStore.set(null);
 		return false;
+	  } finally {
+		tokenRefreshLoading.set(false);
 	  }
 	},
   // Регистрация пользователя

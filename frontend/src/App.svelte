@@ -1,5 +1,6 @@
 <script>
-  import { Router, Route, Link } from "svelte-routing";
+  import TokenRefreshIndicator from './components/TokenRefreshIndicator.svelte';
+  import { Router, Route, Link, navigate } from "svelte-routing";
   import Home from "./components/Home.svelte";
   import Login from "./components/Login.svelte";
   import Register from "./components/Register.svelte";
@@ -8,22 +9,16 @@
   import EditPost from "./components/EditPost.svelte";
   import Profile from "./components/Profile.svelte";
   import AuthGuard from "./components/AuthGuard.svelte";
-  import { userStore } from "./stores/userStore";
-  import { updateUserActivity } from './stores/userStore';
+  import { userStore, updateUserActivity, logout } from './stores/userStore';
   import { onMount } from "svelte";
 
   export let url = "";
   let user;
+  let menuOpen = false;
 
   userStore.subscribe(value => {
     user = value;
   });
-
-  function logout() {
-    userStore.set(null);
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-  }
 
   // Обновляем активность при загрузке приложения
   onMount(() => {
@@ -45,23 +40,36 @@
   function handleLinkClick() {
     updateUserActivity();
   }
+
+function handleLogout() {
+  logout();
+  navigate("/", { replace: true });
+}
+
+  function toggleMenu() {
+    menuOpen = !menuOpen;
+  }
 </script>
 
 <Router {url}>
+  <TokenRefreshIndicator />
   <nav>
     <div class="container">
-      <div class="brand">
-        <Link to="/" on:click={handleLinkClick}>Мой Блог</Link>
-      </div>
-      <ul class="nav-links">
+    <div class="brand">
+      <Link to="/" on:click={handleLinkClick}>Мой Блог</Link>
+    </div>
+    <button class="menu-toggle" on:click={toggleMenu}>
+      ☰
+    </button>
+      <ul class="nav-links {menuOpen ? 'open' : ''}">
         <li><Link to="/" on:click={handleLinkClick}>Главная</Link></li>
         {#if user}
           <li><Link to="/create" on:click={handleLinkClick}>Новый пост</Link></li>
           <li><Link to="/profile" on:click={handleLinkClick}>Профиль</Link></li>
-          <li><button on:click={logout}>Выйти</button></li>
+          <li><button on:click={() => { logout(); }}>Выйти</button></li>
         {:else}
           <li><Link to="/login" on:click={handleLinkClick}>Войти</Link></li>
-          <li><Link to="/register" on:click={handleLinkClick}>Регистрация</Link></li>
+
         {/if}
       </ul>
     </div>
@@ -188,5 +196,41 @@
     margin: 0;
     font-size: 0.9rem;
     opacity: 0.8;
+  }
+
+  @media (max-width: 768px) {
+  .nav-links {
+    flex-direction: column;
+    position: absolute;
+    top: 60px;
+    right: 10px;
+    background-color: #333;
+    border-radius: 4px;
+    padding: 10px;
+    gap: 10px;
+    display: none;
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .menu-toggle {
+    display: block;
+  }
+}
+
+@media (min-width: 769px) {
+  .menu-toggle {
+    display: none;
+  }
+}
+
+  .menu-toggle {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
   }
 </style>

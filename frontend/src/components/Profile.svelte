@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { api, userStore, tokenExpiration } from "../stores/userStore";
   import UserSettings from './UserSettings.svelte';
 
   let user = null;
@@ -10,8 +10,6 @@
   let loading = true;
   let error = null;
   let activeTab = 'posts'; // 'posts', 'saved', or 'settings'
-  let tokenExpiresIn = 0;
-  let timer;
   let savedPosts = [];
 
   userStore.subscribe(value => {
@@ -36,9 +34,6 @@
 
       loading = false;
 
-      updateTokenTime();
-      timer = setInterval(updateTokenTime, 1000);
-
       if (user) {
         await loadSavedPosts();
       }
@@ -48,27 +43,6 @@
       loading = false;
     }
   });
-
-  onDestroy(() => {
-    clearInterval(timer);
-  });
-
-  function updateTokenTime() {
-    const token = localStorage.getItem('authToken');
-    if (!token) return;
-
-    try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-
-      // Вычисляем оставшееся время в секундах
-      tokenExpiresIn = Math.max(0, Math.floor(payload.exp - Date.now()/1000));
-    } catch (e) {
-      console.error('Ошибка проверки токена', e);
-      tokenExpiresIn = 0;
-    }
-  }
 
   async function loadSavedPosts() {
     try {
@@ -128,7 +102,7 @@
             <p class="profile-email">{userInfo.email}</p>
             <p class="profile-date">Участник с {formatDate(userInfo.created_at)}</p>
             <div class="token-info">
-              <p>Срок действия токена: <strong>{tokenExpiresIn} сек.</strong></p>
+              <p>Срок действия токена: <strong>{$tokenExpiration} сек.</strong></p>
             </div>
           </div>
         </div>

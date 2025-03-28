@@ -251,6 +251,12 @@
     return userId === commentAuthorId;
   }
 
+	function sanitizeHTML(str) {
+	  const temp = document.createElement('div');
+	  temp.textContent = str;
+	  return temp.innerHTML;
+	}
+
   // Обновляем пагинацию при изменении комментариев
   $: if (comments) {
     applyPagination();
@@ -352,7 +358,7 @@
                   </div>
                 </div>
               {:else}
-                <div class="comment-content">{comment.content}</div>
+                <div class="comment-content">{@html sanitizeHTML(comment.content)}</div>
               {/if}
 
               {#if user && canDeleteComment(comment)}
@@ -431,6 +437,21 @@
 </div>
 
 <style>
+@media (max-width: 768px) {
+  .post-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .comment-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+  }
+}
   .blog-post {
     max-width: 800px;
     margin: 0 auto;
