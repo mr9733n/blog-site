@@ -1,0 +1,82 @@
+classDiagram
+    class app {
+        +process()
+    }
+    class config {
+        +process()
+    }
+    class models {
+        +process()
+    }
+
+    %% Relationships between classes
+    class sqlite3 {
+        +process()
+    }
+    app --> sqlite3
+    class io {
+        +process()
+    }
+    app --> io
+    app --> models
+    class flask {
+        +process()
+    }
+    app --> flask
+    class logging {
+        +process()
+    }
+    app --> logging
+    class datetime {
+        +process()
+    }
+    app --> datetime
+    class os {
+        +process()
+    }
+    app --> os
+    class flask_jwt_extended {
+        +process()
+    }
+    app --> flask_jwt_extended
+    class dotenv {
+        +process()
+    }
+    app --> dotenv
+    class flask_cors {
+        +process()
+    }
+    app --> flask_cors
+    app --> config
+    config --> logging
+    class secrets {
+        +process()
+    }
+    config --> secrets
+    config --> os
+    class werkzeug_utils {
+        +process()
+    }
+    models --> werkzeug_utils
+    models --> sqlite3
+    models --> io
+    class PIL {
+        +process()
+    }
+    models --> PIL
+    class imghdr {
+        +process()
+    }
+    models --> imghdr
+    models --> flask
+    models --> app
+    models --> datetime
+    class uuid {
+        +process()
+    }
+    models --> uuid
+    models --> os
+    class werkzeug_security {
+        +process()
+    }
+    models --> werkzeug_security

@@ -10,6 +10,7 @@
 - [ ] ...
 
 ## Features:
+- [ ] Enhance Markdown renderer to support text justification
 - [ ] Add a new screen in Profile: "Admin-users" (rename appropriately) for user list management.
 - [ ] Create a new route and model for managing users.
 - [ ] Add a new route and model for blocking users.

@@ -2,86 +2,93 @@
 
 ## Overview
 
-**Blog-site** is a blogging platform with a modern user experience, featuring dark mode support, user registration, Markdown-based post creation, and image attachments. It includes a commenting system, user profiles with token management, a favorites feature, and an admin panel for content moderation.
+**Blog-site** is a modern blogging platform designed to provide an exceptional user experience with robust features and security.
 
-## Features
+## 🖼️ Screenshots
 
-### Core Functionality:
+![Dark Mode Preview](./preview1.webp)
+![Blog Interface](./preview2.webp)
+![User Profile](./preview3.webp)
 
-- Light and dark theme support.
-- User registration and authentication.
-- Markdown-based post creation.
-- Image attachments in posts.
-- Commenting system for posts.
-- Editing and deleting personal posts and comments.
-- Viewing and deleting uploaded images in the user profile.
-- Adding posts to "Favorites."
-- Token expiration and refresh token management.
-- All authentication-required routes are secured.
-- Protection against XSS and SQL injection.
+## 🌟 Core Features
 
-### Administrative Features:
+### User Experience
+- Light and dark theme support
+- User registration and authentication
+- Markdown-based post creation
+- Image attachments in posts
+- Commenting system
 
-- Access to all posts and comments.
-- Editing and deleting posts and comments, including those created by other users.
+### User Management
+- Edit and delete personal posts and comments
+- View and manage uploaded images
+- Add posts to "Favorites"
+- Token-based authentication with expiration management
 
-## Technology Stack
+### Security
+- Secured authentication routes
+- Protection against XSS and SQL injection
+- Refresh token management
 
-- **Backend**: Flask
-- **Frontend**: Svelte
-- **Database**: SQLite
-- **Proxying**: Nginx
-- **Deployment**: Docker, Docker Compose
-- **Authentication**: JWT-based token system
+### Administrative Capabilities
+- Full access to all posts and comments
+- Ability to edit/delete posts and comments across the platform
 
-## Deployment with Docker
+## 🛠️ Technology Stack
 
-1. Ensure Docker and Docker Compose are installed.
-2. Clone the repository:
-   ```sh
-   git clone https://github.com/mr9733n/blog-site.git
-   cd blog-site
-   ```
-3. Build and start the containers:
-   ```sh
-   docker-compose up --build -d
-   ```
-4. The application will be accessible at `http://localhost:36166`
+| Category | Technology |
+|----------|------------|
+| Backend | Flask |
+| Frontend | Svelte |
+| Database | SQLite |
+| Proxying | Nginx |
+| Deployment | Docker, Docker Compose |
+| Authentication | JWT-based token system |
 
-## Future Plans
+## 🚀 Quick Deployment
 
-### Feature Enhancements:
+```sh
+# Clone the repository
+git clone https://github.com/mr9733n/blog-site.git
+cd blog-site
 
-- User list display in profile.
-- User blocking functionality.
-- Server-side pagination for posts, comments, and users.
-- Profile data editing (name, email, password).
-- User-defined post title editing.
-- Custom CSS support for user profiles.
-- Multi-language support (EN/RU).
+# Build and start containers
+docker-compose up --build -d
+```
 
-### Security Improvements:
+🌐 Access the application at `http://localhost:36166`
 
-- Enhanced database protection.
+## 🔍 System Architecture
 
-### Infrastructure:
+[View Backend Dependency Diagram](https://github.com/mr9733n/blog-site/blob/main/dependency_graph_20250328_134912.mermaid)
 
-- Production deployment setup (Docker, Compose, logging, SSL, secure proxy configuration).
+[System Architecture Graph](./dependency_graph_20250328_135030.svg)
 
-### Refactoring:
 
-- Route structure optimization.
-- Improved Svelte component architecture.
+## 🗺️ Roadmap
 
-### Testing:
+### Upcoming Features
+- User list display
+- User blocking functionality
+- Server-side pagination
+- Profile data editing
+- Multi-language support (EN/RU)
 
-- Unit tests for core functionality.
+### Infrastructure Improvements
+- Production deployment optimization
+- Enhanced logging
+- SSL configuration
+- Secure proxy setup
 
-## Additional Resources
+### Technical Enhancements
+- Route structure optimization
+- Svelte component architecture improvements
+- Comprehensive unit testing
 
-For a detailed list of planned features and known issues, refer to the [TODO list](https://github.com/mr9733n/blog-site/blob/main/todo.md).
+## 📋 Additional Resources
 
-## License
+- [Detailed TODO List](https://github.com/mr9733n/blog-site/blob/main/todo.md)
 
-This project is released under the MIT license.
+## 📄 License
 
+MIT License
