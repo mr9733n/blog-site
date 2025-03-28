@@ -84,12 +84,12 @@
       case 'link':
         insertion = `[${selectedText || 'текст ссылки'}](http://example.com)`;
         break;
-      case 'image':
+    case 'image':
         if (uploadedImages.length > 0) {
             // Use the most recently uploaded image
             const lastImage = uploadedImages[uploadedImages.length - 1];
-            // Create a clickable image: image wrapped in a link to itself
-            insertion = `[![${selectedText || lastImage.name}](${lastImage.url})](${lastImage.url})`;
+            // Вместо обертывания изображения в ссылку, просто вставляем само изображение
+            insertion = `![${selectedText || lastImage.name}](${lastImage.url})`;
         } else {
             // No uploaded images, show error message
             error = "Пожалуйста, сначала загрузите изображение";

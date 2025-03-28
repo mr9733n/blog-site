@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { Link } from "svelte-routing";
   import { api } from "../stores/userStore";
+  import { renderMarkdown } from "../utils/markdown";
 
   let posts = [];
   let loading = true;
@@ -29,13 +30,41 @@
     }).format(date);
   }
 
-  // Функция для обрезки длинного контента
-  function truncateContent(content, maxLength = 300) {
-    if (content.length <= maxLength) return content;
-    const truncated = content.substr(0, maxLength);
-    // Try to end at a space to avoid cutting words
-    const lastSpace = truncated.lastIndexOf(' ');
-    return truncated.substr(0, lastSpace > maxLength - 20 ? lastSpace : maxLength) + '...';
+  // Функция для обрезки длинного контента и рендеринга markdown
+  function truncateAndRenderContent(content, maxLength = 500) {
+    // Check if content includes image markdown
+    const firstImageMatch = content.match(/!\[([^\]]+)\]\(([^)]+)\)/);
+
+    // First extract the thumbnail image if any
+    let thumbnailImage = null;
+    if (firstImageMatch) {
+      thumbnailImage = {
+        alt: firstImageMatch[1],
+        url: firstImageMatch[2]
+      };
+    }
+
+    // Then truncate the content and remove the first image from it
+    let truncatedContent = content;
+
+    // Remove first image from content to avoid duplication
+    if (firstImageMatch) {
+      truncatedContent = truncatedContent.replace(firstImageMatch[0], '');
+    }
+
+    // Truncate content if it's too long
+    if (truncatedContent.length > maxLength) {
+      truncatedContent = truncatedContent.substr(0, maxLength);
+      // Try to end at a space to avoid cutting words
+      const lastSpace = truncatedContent.lastIndexOf(' ');
+      truncatedContent = truncatedContent.substr(0, lastSpace > maxLength - 20 ? lastSpace : maxLength) + '...';
+    }
+
+    // Render the truncated content as markdown
+    return {
+      thumbnailImage,
+      renderedContent: renderMarkdown(truncatedContent)
+    };
   }
 </script>
 
@@ -66,6 +95,9 @@
   {:else}
     <div class="posts-list">
       {#each posts as post}
+        <!-- Process content for each post -->
+        {@const { thumbnailImage, renderedContent } = truncateAndRenderContent(post.content)}
+
         <article class="post-card">
           <header>
             <h2 class="post-title">
@@ -89,9 +121,21 @@
             </div>
           </header>
 
-          <div class="post-content">
-            {truncateContent(post.content)}
-          </div>
+          <!-- Display thumbnail image if available -->
+          {#if thumbnailImage}
+            <div class="post-thumbnail">
+              <Link to={`/post/${post.id}`}>
+                <img src={thumbnailImage.url} alt={thumbnailImage.alt} />
+              </Link>
+            </div>
+          {/if}
+
+          <!-- Only show content if there is some after removing the image -->
+          {#if renderedContent && renderedContent.trim() !== ''}
+            <div class="post-content markdown-content">
+              {@html renderedContent}
+            </div>
+          {/if}
 
           <footer>
             <Link to={`/post/${post.id}`} class="read-more">
@@ -223,11 +267,61 @@
     gap: 0.5rem;
   }
 
+  .post-thumbnail {
+    margin-bottom: 1.5rem;
+    border-radius: 5px;
+    overflow: hidden;
+    max-height: 300px;
+  }
+
+  .post-thumbnail img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+  }
+
+  .post-card:hover .post-thumbnail img {
+    transform: scale(1.02);
+  }
+
   .post-content {
     color: var(--text-primary);
     line-height: 1.7;
     margin-bottom: 1.5rem;
     flex-grow: 1;
+  }
+
+  /* Styles for markdown content */
+  :global(.markdown-content h1) {
+    font-size: 1.8rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+  }
+
+  :global(.markdown-content h2) {
+    font-size: 1.6rem;
+    margin-top: 1.4rem;
+    margin-bottom: 0.9rem;
+  }
+
+  :global(.markdown-content h3) {
+    font-size: 1.4rem;
+    margin-top: 1.3rem;
+    margin-bottom: 0.8rem;
+  }
+
+  :global(.markdown-content p) {
+    margin-bottom: 1rem;
+  }
+
+  :global(.markdown-content img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 5px;
+    margin: 1rem 0;
   }
 
   footer {

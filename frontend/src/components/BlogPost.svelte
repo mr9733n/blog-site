@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, afterUpdate } from "svelte";
   import { Link, navigate } from "svelte-routing";
   import { api, userStore } from "../stores/userStore";
   import { renderMarkdown } from "../utils/markdown";
@@ -24,6 +24,7 @@
   let paginatedComments = [];
   let deletingCommentId = null; // Для отслеживания комментария, который собираются удалить
   let renderedContent = ''; // For storing the rendered markdown content
+  let contentElement; // Reference to the content div
 
   userStore.subscribe(value => {
     user = value;
@@ -44,6 +45,19 @@
     } catch (err) {
       error = err.message;
       loading = false;
+    }
+  });
+
+    afterUpdate(() => {
+    if (contentElement) {
+      // Добавляем класс для всех изображений
+      const images = contentElement.querySelectorAll('img:not(.has-click-handler)');
+      images.forEach(img => {
+        img.classList.add('clickable-image', 'has-click-handler');
+
+        // Если глобальная функция уже определена, не нужно добавлять обработчик
+        // Обработчик будет работать через делегирование событий в ImageViewer
+      });
     }
   });
 
@@ -319,7 +333,7 @@
         </div>
       </header>
 
-      <div class="post-content markdown-content">
+      <div class="post-content markdown-content" bind:this={contentElement}>
         {@html renderedContent}
       </div>
 
@@ -498,6 +512,17 @@
 </div>
 
 <style>
+  :global(.clickable-image) {
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    max-width: 100%;
+    border-radius: 5px;
+  }
+
+  :global(.clickable-image:hover) {
+    transform: scale(1.02);
+  }
+
   .blog-post {
     max-width: 800px;
     margin: 0 auto;

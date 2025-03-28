@@ -1,6 +1,7 @@
 <script>
   import TokenRefreshIndicator from './components/TokenRefreshIndicator.svelte';
   import ThemeToggle from './components/ThemeToggle.svelte';
+  import ImageViewer from './components/ImageViewer.svelte'; // Импортируем компонент просмотра изображений
   import { Router, Route, Link, navigate } from "svelte-routing";
   import Home from "./components/Home.svelte";
   import Login from "./components/Login.svelte";
@@ -55,6 +56,8 @@
 
 <Router {url}>
   <TokenRefreshIndicator />
+  <ImageViewer /> <!-- Добавляем компонент просмотра изображений -->
+
   <nav>
     <div class="container nav-container">
       <div class="nav-left">
