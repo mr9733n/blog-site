@@ -36,11 +36,12 @@
 
       loading = false;
 
-		updateTokenTime();
-		    timer = setInterval(updateTokenTime, 1000);
-	    if (user) {
-      await loadSavedPosts();
-    }
+      updateTokenTime();
+      timer = setInterval(updateTokenTime, 1000);
+
+      if (user) {
+        await loadSavedPosts();
+      }
 
     } catch (err) {
       error = err.message;
@@ -49,25 +50,25 @@
   });
 
   onDestroy(() => {
-  clearInterval(timer);
-});
+    clearInterval(timer);
+  });
 
-function updateTokenTime() {
-  const token = localStorage.getItem('authToken');
-  if (!token) return;
+  function updateTokenTime() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
 
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(window.atob(base64));
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
 
-    // Вычисляем оставшееся время в секундах
-    tokenExpiresIn = Math.max(0, Math.floor(payload.exp - Date.now()/1000));
-  } catch (e) {
-    console.error('Ошибка проверки токена', e);
-    tokenExpiresIn = 0;
+      // Вычисляем оставшееся время в секундах
+      tokenExpiresIn = Math.max(0, Math.floor(payload.exp - Date.now()/1000));
+    } catch (e) {
+      console.error('Ошибка проверки токена', e);
+      tokenExpiresIn = 0;
+    }
   }
-}
 
   async function loadSavedPosts() {
     try {
@@ -101,7 +102,7 @@ function updateTokenTime() {
     }).format(date);
   }
 
-    $: if (activeTab === 'saved' && user) {
+  $: if (activeTab === 'saved' && user) {
     loadSavedPosts();
   }
 </script>
@@ -126,9 +127,9 @@ function updateTokenTime() {
             <h2>{userInfo.username}</h2>
             <p class="profile-email">{userInfo.email}</p>
             <p class="profile-date">Участник с {formatDate(userInfo.created_at)}</p>
-          <div class="token-info">
-  			<p>Срок действия токена: <strong>{tokenExpiresIn} сек.</strong></p>
-		  </div>
+            <div class="token-info">
+              <p>Срок действия токена: <strong>{tokenExpiresIn} сек.</strong></p>
+            </div>
           </div>
         </div>
       </div>
@@ -181,34 +182,34 @@ function updateTokenTime() {
               </div>
             {/if}
           </div>
-{:else if activeTab === 'saved'}
-  <div class="tab-panel">
-    {#if savedPosts.length === 0}
-      <div class="empty-posts">
-        <p>У вас пока нет сохранённых постов.</p>
-      </div>
-    {:else}
-      <div class="post-list">
-        {#each savedPosts as post}
-          <div class="post-item">
-            <div class="post-title">
-              <Link to={`/post/${post.id}`}>{post.title}</Link>
-            </div>
-            <div class="post-meta">
-              <span class="post-author">Автор: {post.username}</span>
-              <span class="post-date">{formatDate(post.created_at)}</span>
-            </div>
-            <div class="post-actions">
-              <Link to={`/post/${post.id}`} class="view-btn">Просмотр</Link>
-              <button class="unsave-btn" on:click={() => unsavePost(post.id)}>
-                Удалить из сохранённых
-              </button>
-            </div>
+        {:else if activeTab === 'saved'}
+          <div class="tab-panel">
+            {#if savedPosts.length === 0}
+              <div class="empty-posts">
+                <p>У вас пока нет сохранённых постов.</p>
+              </div>
+            {:else}
+              <div class="post-list">
+                {#each savedPosts as post}
+                  <div class="post-item">
+                    <div class="post-title">
+                      <Link to={`/post/${post.id}`}>{post.title}</Link>
+                    </div>
+                    <div class="post-meta">
+                      <span class="post-author">Автор: {post.username}</span>
+                      <span class="post-date">{formatDate(post.created_at)}</span>
+                    </div>
+                    <div class="post-actions">
+                      <Link to={`/post/${post.id}`} class="view-btn">Просмотр</Link>
+                      <button class="unsave-btn" on:click={() => unsavePost(post.id)}>
+                        Удалить из сохранённых
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </div>
-        {/each}
-      </div>
-    {/if}
-  </div>
         {:else if activeTab === 'settings'}
           <div class="tab-panel">
             <UserSettings />
@@ -434,5 +435,20 @@ function updateTokenTime() {
 
   .view-btn:hover {
     background-color: #5a6268;
+  }
+
+  .unsave-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .unsave-btn:hover {
+    background-color: #c82333;
   }
 </style>

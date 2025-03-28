@@ -144,10 +144,19 @@ function logout() {
 }
 
 export const api = {
-  // Вход пользователя
+    // Вход пользователя
 	async login(username, password) {
 	  try {
 		console.log('Attempting login for:', username);
+
+		// Проверка формата ввода на стороне клиента (первичный уровень защиты)
+		if (username.includes("'") || username.includes('"') || username.includes(';') ||
+			password.includes("'") || password.includes('"') || password.includes(';')) {
+		  console.warn('Suspicious characters detected in login credentials');
+		  // Можем либо отказать сразу, либо продолжить и дать серверу обработать это
+		  // return { success: false, error: 'Логин или пароль содержат недопустимые символы' };
+		}
+
 		const response = await fetch(`${API_URL}/login`, {
 		  method: 'POST',
 		  headers: {
@@ -156,7 +165,10 @@ export const api = {
 		  body: JSON.stringify({ username, password })
 		});
 
-		if (!response.ok) {
+		if (response.status === 401) {
+		  // Для ошибок авторизации - более дружелюбное сообщение
+		  return { success: false, error: 'Неверный логин или пароль' };
+		} else if (!response.ok) {
 		  const error = await response.json();
 		  throw new Error(error.msg || 'Ошибка авторизации');
 		}

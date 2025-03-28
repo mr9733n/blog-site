@@ -1,18 +1,23 @@
 <script>
-  import { navigate } from "svelte-routing";
-  import { api } from "../stores/userStore";
+  import { Link, navigate } from "svelte-routing";
+  import { api, userStore } from "../stores/userStore";
 
   let username = "";
   let password = "";
-  let error = "";
   let loading = false;
+  let error = null;
+  let hasSpecialChars = false;
+
+  // Проверка наличия подозрительных символов в полях формы
+  $: hasSpecialChars = /['";]/.test(username) || /['";]/.test(password);
 
   async function handleSubmit() {
-    error = "";
+    error = null;
     loading = true;
 
-    if (!username || !password) {
-      error = "Пожалуйста, заполните все поля";
+    // Проверка наличия небезопасных символов
+    if (hasSpecialChars) {
+      error = "Логин или пароль содержат недопустимые символы";
       loading = false;
       return;
     }
@@ -22,19 +27,24 @@
     if (result.success) {
       navigate("/", { replace: true });
     } else {
-      error = result.error || "Ошибка авторизации";
+      error = result.error;
+      loading = false;
     }
-
-    loading = false;
   }
 </script>
 
 <div class="login-page">
-  <div class="form-container">
+  <div class="login-form">
     <h1>Вход в аккаунт</h1>
 
     {#if error}
       <div class="error-message">{error}</div>
+    {/if}
+
+    {#if hasSpecialChars}
+      <div class="warning-message">
+        Обнаружены специальные символы, которые могут быть небезопасны.
+      </div>
     {/if}
 
     <form on:submit|preventDefault={handleSubmit}>
@@ -45,7 +55,6 @@
           id="username"
           bind:value={username}
           disabled={loading}
-          placeholder="Введите имя пользователя"
           required
           autocomplete="username"
         />
@@ -58,19 +67,18 @@
           id="password"
           bind:value={password}
           disabled={loading}
-          placeholder="Введите пароль"
           required
           autocomplete="current-password"
         />
       </div>
 
-      <button type="submit" disabled={loading} class="submit-button">
+      <button type="submit" disabled={loading || hasSpecialChars}>
         {loading ? 'Выполняется вход...' : 'Войти'}
       </button>
     </form>
 
-    <div class="register-link">
-      <p>Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
+    <div class="form-footer">
+      <p>Еще нет аккаунта? <Link to="/register">Зарегистрироваться</Link></p>
     </div>
   </div>
 </div>
@@ -79,16 +87,17 @@
   .login-page {
     display: flex;
     justify-content: center;
+    align-items: center;
     padding: 2rem 0;
   }
 
-  .form-container {
+  .login-form {
     background-color: #fff;
     border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 2rem;
     width: 100%;
-    max-width: 500px;
+    max-width: 400px;
   }
 
   h1 {
@@ -96,6 +105,7 @@
     margin-bottom: 1.5rem;
     text-align: center;
     color: #333;
+    font-size: 1.8rem;
   }
 
   .error-message {
@@ -107,8 +117,18 @@
     text-align: center;
   }
 
-  .form-group {
+  .warning-message {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 0.75rem;
     margin-bottom: 1rem;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.5rem;
   }
 
   label {
@@ -132,9 +152,9 @@
     box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
   }
 
-  .submit-button {
+  button {
     width: 100%;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem;
     background-color: #007bff;
     color: white;
     border: none;
@@ -144,26 +164,28 @@
     transition: background-color 0.2s;
   }
 
-  .submit-button:hover:not(:disabled) {
+  button:hover:not(:disabled) {
     background-color: #0069d9;
   }
 
-  .submit-button:disabled {
+  button:disabled {
     background-color: #6c757d;
     cursor: not-allowed;
   }
 
-  .register-link {
+  .form-footer {
     margin-top: 1.5rem;
     text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
   }
 
-  .register-link a {
+  .form-footer a {
     color: #007bff;
     text-decoration: none;
   }
 
-  .register-link a:hover {
+  .form-footer a:hover {
     text-decoration: underline;
   }
 </style>
