@@ -1,46 +1,44 @@
 # Blog-site 0.0.1.0
 
 ## Bugs:
-- [ ] fix theme in Profile, night theme not applied
-- [ ] fix style of input in night theme
-- [ ] fix Admin-post tab link (Admin-panel), inactive not visible   
-- [ ] fix styles in CreatePost module
-- [ ] fix redirect & message image upload failed
-- [ ] fix deploy for production
+- [ ] Fix profile theme: night mode is not applied.
+- [ ] Fix input styling in night mode.
+- [ ] Fix inactive state visibility in Admin-post tab link (Admin-panel).
+- [ ] Fix styles in the CreatePost module.
+- [ ] Fix redirect and error message for failed image uploads.
+- [ ] Fix production deployment setup.
 - [ ] ...
-
 
 ## Features:
-- [ ] add new screen in Profile: Admin-users (need to create new name) for list of users
-- [ ] add new route and model for list of users
-- [ ] add new route for and model block user
-- [ ] change list of images screen with redirect from users list
-- [ ] add server pagination
-- [ ] add lazy load on front with server pagination 
-- [ ] use lazy load pagination for posts, comments, users list, images
-- [ ] add changing user data in Profile: name, email, password
-- [ ] add changing title names by user
-- [ ] add custom css by user
-- [ ] create en, ru title names switching
+- [ ] Add a new screen in Profile: "Admin-users" (rename appropriately) for user list management.
+- [ ] Create a new route and model for managing users.
+- [ ] Add a new route and model for blocking users.
+- [ ] Update the image list screen to allow navigation from the user list.
+- [ ] Implement server-side pagination.
+- [ ] Add lazy loading on the frontend with server pagination.
+- [ ] Enable lazy load pagination for posts, comments, users, and images.
+- [ ] Allow users to edit their profile data (name, email, password).
+- [ ] Allow users to rename their posts.
+- [ ] Add support for custom CSS in user profiles.
+- [ ] Implement multilingual title switching (EN/RU).
 - [ ] ...
-
 
 ## Security:
-- [ ] add security for db
+- [ ] Enhance database security.
+- [ ] Implement additional security measures.
 - [ ] ...
 
-
-## Infrastructure: 
-- [ ] how to deploy in prod (docker, compose, logs, ssl, secure proxy for containers)
+## Infrastructure:
+- [ ] Document production deployment (Docker, Compose, logs, SSL, secure proxy configuration).
 - [ ] ...
-
 
 ## Refactoring:
-- [ ] Routes
-- [ ] Svelte modules
+- [ ] Optimize route structure.
+- [ ] Improve Svelte module organization.
 - [ ] ...
 
-
-## Tests: 
-- [ ] add tests  
+## Tests:
+- [ ] Add automated tests for core functionality.
 - [ ] ...
+
+---
