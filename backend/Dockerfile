@@ -1,19 +1,45 @@
-FROM python:3.9-slim
+# Многоступенчатая сборка для минимизации размера
+FROM python:3.12-alpine AS builder
+
+# Устанавливаем только необходимые системные зависимости
+RUN apk add --no-cache --virtual .build-deps \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    openssl-dev
 
 WORKDIR /app
 
-# Устанавливаем зависимости
+# Копируем только требования и устанавливаем зависимости
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    --no-compile \
+    --prefix=/install \
+    -r requirements.txt \
+    && rm -rf /root/.cache
 
-# Копируем исходный код
-COPY . .
+# Финальный легковесный образ
+FROM python:3.12-alpine
+
+# Копируем только необходимые файлы
+WORKDIR /app
+COPY --from=builder /install /usr/local
+
+# Выборочное копирование файлов
+COPY app.py .
+COPY config.py .
+COPY models.py .
+COPY schema.sql .
 
 # Устанавливаем переменные окружения
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# Очищаем кэш и временные файлы
+RUN find . -type d -name "__pycache__" -exec rm -rf {} + \
+    && rm -rf /root/.cache
 
 # Открываем порт
 EXPOSE 5000

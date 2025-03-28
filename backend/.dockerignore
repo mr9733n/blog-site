@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build and distribution
+*.egg-info/
+dist/
+build/
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Development files
+README.md
+TODO.md
+*.md
+
+# IDE specific
+.vscode/
+.idea/
+
+# Unnecessary files
+.DS_Store
+Thumbs.db
