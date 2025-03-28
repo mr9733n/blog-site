@@ -32,9 +32,11 @@
 
   onMount(async () => {
     try {
-      post = await api.getPost(id);
+    post = await api.getPost(id);
+    console.log('Raw post content:', post.content);
       // Render markdown content
-      renderedContent = renderMarkdown(post.content);
+    renderedContent = renderMarkdown(post.content);
+    console.log('Rendered markdown:', renderedContent);
       loading = false;
 
       // Загрузка комментариев
@@ -48,18 +50,17 @@
     }
   });
 
-    afterUpdate(() => {
-    if (contentElement) {
-      // Добавляем класс для всех изображений
-      const images = contentElement.querySelectorAll('img:not(.has-click-handler)');
-      images.forEach(img => {
-        img.classList.add('clickable-image', 'has-click-handler');
-
-        // Если глобальная функция уже определена, не нужно добавлять обработчик
-        // Обработчик будет работать через делегирование событий в ImageViewer
-      });
-    }
-  });
+afterUpdate(() => {
+  if (contentElement) {
+    // Удаляем возможный inline обработчик onclick
+    const images = contentElement.querySelectorAll('img:not(.has-click-handler)');
+    images.forEach(img => {
+      img.classList.add('clickable-image', 'has-click-handler');
+      // Удалить любые существующие onclick обработчики
+      img.removeAttribute('onclick');
+    });
+  }
+});
 
   async function checkIfSaved() {
     if (user && post) {

@@ -1,8 +1,8 @@
 <script>
+  import { Router, Route, Link, navigate } from "svelte-routing";
   import TokenRefreshIndicator from './components/TokenRefreshIndicator.svelte';
   import ThemeToggle from './components/ThemeToggle.svelte';
-  import ImageViewer from './components/ImageViewer.svelte'; // Импортируем компонент просмотра изображений
-  import { Router, Route, Link, navigate } from "svelte-routing";
+  import ImageViewer from './components/ImageViewer.svelte';
   import Home from "./components/Home.svelte";
   import Login from "./components/Login.svelte";
   import Register from "./components/Register.svelte";

@@ -6,12 +6,14 @@
   let isModalOpen = false;
   let currentImageSrc = '';
   let modalElement;
+  let clickHandler;
 
-  // Функция для открытия модального окна с изображением
-  export function openImage(src) {
-    currentImageSrc = src;
-    isModalOpen = true;
-  }
+// Функция для открытия модального окна с изображением
+export function openImage(src) {
+  console.log('Opening image modal with source:', src);
+  currentImageSrc = src;
+  isModalOpen = true;
+}
 
   // Обработчик нажатия клавиши ESC
   function handleKeyDown(e) {
@@ -20,37 +22,46 @@
     }
   }
 
-  // Добавляем и удаляем обработчик при монтировании/размонтировании компонента
-  onMount(() => {
-    document.addEventListener('keydown', handleKeyDown);
+onMount(() => {
+  document.addEventListener('keydown', handleKeyDown);
+  window.openImageViewer = openImage;
 
-    // Добавляем глобальную функцию для возможности вызова из обычного HTML
-    window.openImageViewer = openImage;
+clickHandler = (e) => {
+  console.log('Click event detected on:', e.target);
 
-    // Настраиваем делегирование событий для всех изображений с классом clickable-image
-    document.body.addEventListener('click', (e) => {
-      if (e.target && e.target.classList.contains('clickable-image')) {
-        openImage(e.target.src);
-        e.preventDefault();
-      }
-    });
-  });
+  // Проверка, если клик был по изображению
+  if (e.target && e.target.tagName === 'IMG') {
+    console.log('Image clicked:', e.target.src);
+    openImage(e.target.src);
+    e.preventDefault();
+    return;
+  }
 
-  onDestroy(() => {
-    document.removeEventListener('keydown', handleKeyDown);
+  // Проверка, если клик был по ссылке
+  if (e.target && e.target.tagName === 'A') {
+    // Проверяем, есть ли в href путь к изображению (по расширению)
+    const href = e.target.getAttribute('href');
+    if (href && (
+      href.endsWith('.jpg') || href.endsWith('.jpeg') ||
+      href.endsWith('.png') || href.endsWith('.gif') ||
+      href.endsWith('.webp') || href.startsWith('blob:')
+    )) {
+      console.log('Image link clicked:', href);
+      openImage(href);
+      e.preventDefault();
+      return;
+    }
+  }
+};
 
-    // Удаляем глобальную функцию при размонтировании
-    delete window.openImageViewer;
+  document.body.addEventListener('click', clickHandler);
+});
 
-    // Удаляем обработчик событий
-    document.body.removeEventListener('click', (e) => {
-      if (e.target && e.target.classList.contains('clickable-image')) {
-        openImage(e.target.src);
-        e.preventDefault();
-      }
-    });
-  });
-
+onDestroy(() => {
+  document.removeEventListener('keydown', handleKeyDown);
+  delete window.openImageViewer;
+  document.body.removeEventListener('click', clickHandler);
+});
   // Закрытие модального окна при клике вне изображения
   function handleModalClick(e) {
     if (e.target === modalElement) {

@@ -29,12 +29,14 @@ export function renderMarkdown(text) {
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-
-  // Images - модифицируем обработку изображений, добавляя класс для модального просмотра
+  // ВАЖНО: Сначала обрабатываем изображения, потом ссылки
+  // Images - обрабатываем изображения перед ссылками
   html = html.replace(/!\[([^\]]+)\]\(([^)]+)\)/g,
-    '<img src="$2" alt="$1" class="markdown-image clickable-image" onclick="handleImageClick(this)">');
+    '<img src="$2" alt="$1" class="markdown-image clickable-image">');
+
+  // Только после этого обрабатываем ссылки
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
   // Lists
   // Unordered lists
@@ -59,85 +61,6 @@ export function renderMarkdown(text) {
   html = html.replace(/<pre><code>(.*?)<\/code><\/pre>/gs, function(match) {
     return match.replace(/<br>/g, '\n');
   });
-
-  // Добавляем JavaScript для обработки кликов на изображениях
-  html += `<script>
-    function handleImageClick(img) {
-      // Create modal if doesn't exist
-      let modal = document.getElementById('image-modal');
-      if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'image-modal';
-        modal.className = 'image-modal';
-        modal.innerHTML = '<div class="modal-content"><span class="close-modal">&times;</span><img id="modal-img"></div>';
-        document.body.appendChild(modal);
-
-        // Add close button handler
-        modal.querySelector('.close-modal').onclick = function() {
-          modal.style.display = 'none';
-        };
-
-        // Close when clicking outside the image
-        modal.onclick = function(e) {
-          if (e.target === modal) {
-            modal.style.display = 'none';
-          }
-        };
-
-        // Add ESC key handler
-        document.addEventListener('keydown', function(e) {
-          if (e.key === 'Escape' && modal.style.display === 'flex') {
-            modal.style.display = 'none';
-          }
-        });
-      }
-
-      // Set the image source and show modal
-      document.getElementById('modal-img').src = img.src;
-      modal.style.display = 'flex';
-    }
-  </script>
-  <style>
-    .clickable-image {
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    .clickable-image:hover {
-      opacity: 0.9;
-    }
-    .image-modal {
-      display: none;
-      position: fixed;
-      z-index: 9999;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0,0,0,0.9);
-      align-items: center;
-      justify-content: center;
-    }
-    .modal-content {
-      position: relative;
-      max-width: 90%;
-      max-height: 90%;
-    }
-    .modal-content img {
-      max-width: 100%;
-      max-height: 90vh;
-      margin: auto;
-      display: block;
-    }
-    .close-modal {
-      position: absolute;
-      top: -40px;
-      right: 0;
-      color: #f1f1f1;
-      font-size: 40px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-  </style>`;
 
   return html;
 }

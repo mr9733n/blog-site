@@ -1,5 +1,15 @@
 /* global.css - Centralized styling for the blog application */
 
+:global(.markdown-image), :global(.clickable-image) {
+  cursor: pointer;
+  max-width: 100%;
+  transition: opacity 0.2s;
+}
+
+:global(.markdown-image:hover), :global(.clickable-image:hover) {
+  opacity: 0.9;
+}
+
 :root {
   /* Light theme variables */
   --bg-primary: #f8f9fa;
