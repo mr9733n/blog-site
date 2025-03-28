@@ -67,3 +67,12 @@ CREATE TABLE IF NOT EXISTS saved_posts (
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
     UNIQUE (user_id, post_id)
 );
+
+-- Таблица статусов пользователей
+CREATE TABLE IF NOT EXISTS user_status (
+    user_id INTEGER PRIMARY KEY,
+    is_blocked INTEGER NOT NULL DEFAULT 0,
+    blocked_at TEXT,
+    blocked_reason TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

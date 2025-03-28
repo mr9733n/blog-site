@@ -11,10 +11,10 @@
 
 ## Features:
 - [ ] Enhance Markdown renderer to support text justification
-- [ ] Add a new screen in Profile: "Admin-users" (rename appropriately) for user list management.
-- [ ] Create a new route and model for managing users.
-- [ ] Add a new route and model for blocking users.
-- [ ] Update the image list screen to allow navigation from the user list.
+- [x] Add a new screen in Profile: "Admin-users" (rename appropriately) for user list management.
+- [x] Create a new route and model for managing users.
+- [x] Add a new route and model for blocking users.
+- [x] Update the image list screen to allow navigation from the user list.
 - [ ] Implement server-side pagination.
 - [ ] Add lazy loading on the frontend with server pagination.
 - [ ] Enable lazy load pagination for posts, comments, users, and images.

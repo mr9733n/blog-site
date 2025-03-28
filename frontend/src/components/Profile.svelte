@@ -3,6 +3,7 @@
   import { Link, navigate } from "svelte-routing";
   import { api, userStore, tokenExpiration } from "../stores/userStore";
   import UserSettings from './UserSettings.svelte';
+  import AdminUsers from './AdminUsers.svelte';
 
   let user = null;
   let userInfo = null;
@@ -236,6 +237,12 @@ async function deletePost(postId) {
 			>
 			  Админ-панель
 			</button>
+			  <button
+				class="tab admin-tab {activeTab === 'users' ? 'active' : ''}"
+				on:click={() => setTab('users')}
+			  >
+				Пользователи
+			  </button>
 		  {/if}
 		</div>
 
@@ -388,7 +395,11 @@ async function deletePost(postId) {
 			{/if}
 		  </div>
 		{/if}
-
+		{#if activeTab === 'users'}
+		  <div class="tab-panel">
+			<AdminUsers />
+		  </div>
+		{/if}
       </div>
     </div>
   {/if}

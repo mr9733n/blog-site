@@ -732,5 +732,96 @@ async createPost(title, content) {
       console.error('Error detaching image from post:', error);
       throw error;
     }
+  },
+  // Получение списка всех пользователей (только для админа)
+async getAllUsers() {
+  try {
+    const response = await authFetch(`${API_URL}/admin/users`);
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Недостаточно прав для выполнения операции');
+      }
+      throw new Error('Ошибка получения списка пользователей');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching all users:', error);
+    throw error;
   }
+},
+
+// Получение подробной информации о пользователе (только для админа)
+async getUserDetails(userId) {
+  try {
+    const response = await authFetch(`${API_URL}/admin/users/${userId}`);
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Недостаточно прав для выполнения операции');
+      } else if (response.status === 404) {
+        throw new Error('Пользователь не найден');
+      }
+      throw new Error('Ошибка получения данных пользователя');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    throw error;
+  }
+},
+
+// Блокировка/разблокировка пользователя (только для админа)
+async toggleUserBlock(userId, blockStatus) {
+  try {
+    const response = await authFetch(`${API_URL}/admin/users/${userId}/block`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ blocked: blockStatus })
+    });
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Недостаточно прав для выполнения операции');
+      }
+      const error = await response.json();
+      throw new Error(error.msg || 'Ошибка изменения блокировки пользователя');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error toggling user block status:', error);
+    throw error;
+  }
+},
+
+// Обновление данных пользователя (только для админа)
+async updateUserData(userId, userData) {
+  try {
+    const response = await authFetch(`${API_URL}/admin/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Недостаточно прав для выполнения операции');
+      }
+      const error = await response.json();
+      throw new Error(error.msg || 'Ошибка обновления данных пользователя');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating user data:', error);
+    throw error;
+  }
+}
 };
