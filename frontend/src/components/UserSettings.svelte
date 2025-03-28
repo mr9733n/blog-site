@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import { api, userStore } from "../stores/userStore";
 
-  let tokenLifetime = 1800; // 30 минут по умолчанию
-  let refreshTokenLifetime = 1296000; // 15 дней по умолчанию
+  let tokenLifetimeMinutes = 30; // 30 минут по умолчанию
+  let refreshTokenLifetimeDays = 15; // 15 дней по умолчанию
   let loading = false;
   let success = false;
   let error = null;
@@ -17,7 +17,8 @@
     // Загружаем текущее значение из локального хранилища
     const storedTokenLifetime = localStorage.getItem('tokenLifetime');
     if (storedTokenLifetime) {
-      tokenLifetime = parseInt(storedTokenLifetime);
+      // Преобразуем секунды в минуты
+      tokenLifetimeMinutes = Math.round(parseInt(storedTokenLifetime) / 60);
     }
 
     // В будущем можно также загружать из API, если мы сохраняем эти значения в БД
@@ -32,20 +33,28 @@
 
     try {
       // Валидация значений
-      if (tokenLifetime < 300 || tokenLifetime > 86400) {
+      if (tokenLifetimeMinutes < 5 || tokenLifetimeMinutes > 1440) {
         throw new Error('Время жизни токена должно быть от 5 минут до 24 часов');
       }
 
-      if (refreshTokenLifetime < 86400 || refreshTokenLifetime > 2592000) {
+      if (refreshTokenLifetimeDays < 1 || refreshTokenLifetimeDays > 30) {
         throw new Error('Время жизни refresh токена должно быть от 1 до 30 дней');
       }
 
+      // Преобразуем минуты и дни в секунды для API
+      const tokenLifetimeSeconds = tokenLifetimeMinutes * 60;
+      const refreshTokenLifetimeSeconds = refreshTokenLifetimeDays * 86400;
+
       // Отправка запроса на обновление настроек
-      const response = await api.updateTokenSettings(tokenLifetime, refreshTokenLifetime);
+      const response = await api.updateTokenSettings(
+        tokenLifetimeSeconds,
+        refreshTokenLifetimeSeconds
+      );
+
       success = true;
 
       // Обновляем значение в локальном хранилище
-      localStorage.setItem('tokenLifetime', tokenLifetime.toString());
+      localStorage.setItem('tokenLifetime', tokenLifetimeSeconds.toString());
 
     } catch (err) {
       error = err.message;
@@ -79,35 +88,18 @@
 
   <div class="settings-form">
     <div class="form-group">
-      <label for="tokenLifetime">Время жизни токена доступа (в секундах)</label>
+      <label for="tokenLifetime">Время жизни токена доступа (в минутах)</label>
       <div class="input-with-help">
         <input
           type="number"
           id="tokenLifetime"
-          bind:value={tokenLifetime}
-          min="300"
-          max="86400"
+          bind:value={tokenLifetimeMinutes}
+          min="5"
+          max="1440"
           disabled={loading}
         />
         <div class="input-help">
-          От 5 минут (300) до 24 часов (86400)
-        </div>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label for="refreshTokenLifetime">Время жизни токена обновления (в секундах)</label>
-      <div class="input-with-help">
-        <input
-          type="number"
-          id="refreshTokenLifetime"
-          bind:value={refreshTokenLifetime}
-          min="86400"
-          max="2592000"
-          disabled={loading}
-        />
-        <div class="input-help">
-          От 1 дня (86400) до 30 дней (2592000)
+          От 5 минут до 24 часов (1440 минут)
         </div>
       </div>
     </div>
@@ -115,11 +107,39 @@
     <div class="token-presets">
       <div class="preset-title">Быстрый выбор для токена доступа:</div>
       <div class="preset-buttons">
-        <button class="preset-btn" on:click={() => tokenLifetime = 300} disabled={loading}>5 минут</button>
-        <button class="preset-btn" on:click={() => tokenLifetime = 1800} disabled={loading}>30 минут</button>
-        <button class="preset-btn" on:click={() => tokenLifetime = 3600} disabled={loading}>1 час</button>
-        <button class="preset-btn" on:click={() => tokenLifetime = 43200} disabled={loading}>12 часов</button>
-        <button class="preset-btn" on:click={() => tokenLifetime = 86400} disabled={loading}>24 часа</button>
+        <button class="preset-btn" on:click={() => tokenLifetimeMinutes = 5} disabled={loading}>5 минут</button>
+        <button class="preset-btn" on:click={() => tokenLifetimeMinutes = 30} disabled={loading}>30 минут</button>
+        <button class="preset-btn" on:click={() => tokenLifetimeMinutes = 60} disabled={loading}>1 час</button>
+        <button class="preset-btn" on:click={() => tokenLifetimeMinutes = 720} disabled={loading}>12 часов</button>
+        <button class="preset-btn" on:click={() => tokenLifetimeMinutes = 1440} disabled={loading}>24 часа</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="refreshTokenLifetime">Время жизни токена обновления (в днях)</label>
+      <div class="input-with-help">
+        <input
+          type="number"
+          id="refreshTokenLifetime"
+          bind:value={refreshTokenLifetimeDays}
+          min="1"
+          max="30"
+          disabled={loading}
+        />
+        <div class="input-help">
+          От 1 до 30 дней
+        </div>
+      </div>
+    </div>
+
+    <div class="token-presets">
+      <div class="preset-title">Быстрый выбор для токена обновления:</div>
+      <div class="preset-buttons">
+        <button class="preset-btn" on:click={() => refreshTokenLifetimeDays = 1} disabled={loading}>1 день</button>
+        <button class="preset-btn" on:click={() => refreshTokenLifetimeDays = 3} disabled={loading}>3 дня</button>
+        <button class="preset-btn" on:click={() => refreshTokenLifetimeDays = 7} disabled={loading}>1 неделя</button>
+        <button class="preset-btn" on:click={() => refreshTokenLifetimeDays = 15} disabled={loading}>15 дней</button>
+        <button class="preset-btn" on:click={() => refreshTokenLifetimeDays = 30} disabled={loading}>30 дней</button>
       </div>
     </div>
 

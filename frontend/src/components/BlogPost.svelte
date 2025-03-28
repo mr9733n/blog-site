@@ -16,7 +16,11 @@
   let confirmDelete = false;
   let editingCommentId = null;
   let editCommentContent = "";
-    let isSaved = false;
+  let isSaved = false;
+  let currentPage = 1;
+  let commentsPerPage = 5;
+  let totalPages = 1;
+  let paginatedComments = [];
 
   userStore.subscribe(value => {
     user = value;
@@ -189,6 +193,60 @@
   function isAuthor() {
     return user && post && post.author_id === parseInt(user.id);
   }
+
+function canDeleteComment(comment) {
+  if (!user || !comment) return false;
+
+  // Проверяем, является ли пользователь автором комментария или автором поста
+  const userId = parseInt(user.id);
+  const commentAuthorId = parseInt(comment.author_id);
+  const postAuthorId = parseInt(post.author_id);
+
+  return userId === commentAuthorId || userId === postAuthorId;
+}
+
+function canEditComment(comment) {
+  if (!user || !comment) return false;
+
+  // Только автор комментария может его редактировать
+  const userId = parseInt(user.id);
+  const commentAuthorId = parseInt(comment.author_id);
+
+  return userId === commentAuthorId;
+}
+
+  // Функция для применения пагинации
+  function applyPagination() {
+    totalPages = Math.ceil(comments.length / commentsPerPage);
+    // Ограничиваем текущую страницу
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    // Вычисляем комментарии для текущей страницы
+    const startIndex = (currentPage - 1) * commentsPerPage;
+    const endIndex = startIndex + commentsPerPage;
+    paginatedComments = comments.slice(startIndex, endIndex);
+  }
+
+  // Переход к предыдущей странице
+  function previousPage() {
+    if (currentPage > 1) {
+      currentPage--;
+      applyPagination();
+    }
+  }
+
+  // Переход к следующей странице
+  function nextPage() {
+    if (currentPage < totalPages) {
+      currentPage++;
+      applyPagination();
+    }
+  }
+
+  $: if (comments) {
+    applyPagination();
+  }
 </script>
 
 <div class="blog-post">
@@ -253,77 +311,99 @@
     </div>
 
     <!-- Секция комментариев -->
-    <section class="comments-section">
-      <h2>Комментарии ({comments.length})</h2>
+<section class="comments-section">
+  <h2>Комментарии ({comments.length})</h2>
 
-      {#if commentError}
-        <div class="comment-error">{commentError}</div>
-      {/if}
+  {#if commentError}
+    <div class="comment-error">{commentError}</div>
+  {/if}
 
-      <!-- Форма для добавления нового комментария -->
-      {#if user}
-        <div class="comment-form">
-          <textarea
-            bind:value={newComment}
-            placeholder="Напишите ваш комментарий..."
-            rows="3"
-          ></textarea>
-          <button on:click={addComment} disabled={commentsLoading}>
-            {commentsLoading ? 'Отправка...' : 'Отправить комментарий'}
+  <!-- Список комментариев -->
+  <div class="comments-list">
+    {#if commentsLoading && comments.length === 0}
+      <div class="comments-loading">Загрузка комментариев...</div>
+    {:else if comments.length === 0}
+      <div class="no-comments">Пока нет комментариев. Будьте первым, кто оставит комментарий!</div>
+    {:else}
+      {#each paginatedComments as comment}
+        <div class="comment">
+          <div class="comment-header">
+            <div class="comment-author">{comment.username}</div>
+            <div class="comment-date">{formatDate(comment.created_at)}</div>
+          </div>
+
+          {#if editingCommentId === comment.id}
+            <div class="comment-edit-form">
+              <textarea
+                bind:value={editCommentContent}
+                rows="3"
+              ></textarea>
+              <div class="comment-edit-actions">
+                <button class="save-btn" on:click={() => saveEditedComment(comment.id)}>Сохранить</button>
+                <button class="cancel-btn" on:click={cancelEditComment}>Отмена</button>
+              </div>
+            </div>
+          {:else}
+            <div class="comment-content">{comment.content}</div>
+          {/if}
+
+{#if user && canDeleteComment(comment)}
+  <div class="comment-actions">
+    {#if canEditComment(comment) && editingCommentId !== comment.id}
+      <button class="edit-comment-btn" on:click={() => startEditComment(comment)}>
+        Редактировать
+      </button>
+    {/if}
+    <button class="delete-comment-btn" on:click={() => deleteComment(comment.id)}>
+      Удалить
+    </button>
+  </div>
+{/if}
+        </div>
+      {/each}
+
+      <!-- Пагинация -->
+      {#if totalPages > 1}
+        <div class="pagination">
+          <button
+            class="pagination-btn"
+            on:click={previousPage}
+            disabled={currentPage === 1}
+          >
+            &laquo; Предыдущая
+          </button>
+          <span class="pagination-info">Страница {currentPage} из {totalPages}</span>
+          <button
+            class="pagination-btn"
+            on:click={nextPage}
+            disabled={currentPage === totalPages}
+          >
+            Следующая &raquo;
           </button>
         </div>
-      {:else}
-        <div class="login-to-comment">
-          <Link to="/login">Войдите</Link>, чтобы оставить комментарий
-        </div>
       {/if}
+    {/if}
+  </div>
 
-      <!-- Список комментариев -->
-      <div class="comments-list">
-        {#if commentsLoading && comments.length === 0}
-          <div class="comments-loading">Загрузка комментариев...</div>
-        {:else if comments.length === 0}
-          <div class="no-comments">Пока нет комментариев. Будьте первым, кто оставит комментарий!</div>
-        {:else}
-          {#each comments as comment}
-            <div class="comment">
-              <div class="comment-header">
-                <div class="comment-author">{comment.username}</div>
-                <div class="comment-date">{formatDate(comment.created_at)}</div>
-              </div>
-
-              {#if editingCommentId === comment.id}
-                <div class="comment-edit-form">
-                  <textarea
-                    bind:value={editCommentContent}
-                    rows="3"
-                  ></textarea>
-                  <div class="comment-edit-actions">
-                    <button class="save-btn" on:click={() => saveEditedComment(comment.id)}>Сохранить</button>
-                    <button class="cancel-btn" on:click={cancelEditComment}>Отмена</button>
-                  </div>
-                </div>
-              {:else}
-                <div class="comment-content">{comment.content}</div>
-              {/if}
-
-              {#if user && (user.id === comment.author_id || user.id === post.author_id)}
-                <div class="comment-actions">
-                  {#if user.id === comment.author_id && editingCommentId !== comment.id}
-                    <button class="edit-comment-btn" on:click={() => startEditComment(comment)}>
-                      Редактировать
-                    </button>
-                  {/if}
-                  <button class="delete-comment-btn" on:click={() => deleteComment(comment.id)}>
-                    Удалить
-                  </button>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        {/if}
-      </div>
-    </section>
+  <!-- Форма для добавления нового комментария (после списка комментариев) -->
+  {#if user}
+    <div class="comment-form">
+      <h3>Добавить комментарий</h3>
+      <textarea
+        bind:value={newComment}
+        placeholder="Напишите ваш комментарий..."
+        rows="3"
+      ></textarea>
+      <button on:click={addComment} disabled={commentsLoading}>
+        {commentsLoading ? 'Отправка...' : 'Отправить комментарий'}
+      </button>
+    </div>
+  {:else}
+    <div class="login-to-comment">
+      <Link to="/login">Войдите</Link>, чтобы оставить комментарий
+    </div>
+  {/if}
+</section>
   {/if}
 </div>
 
@@ -643,5 +723,76 @@
 
   .cancel-btn:hover {
     background-color: #5a6268;
+  }
+
+  .post-save-action {
+  margin-top: 1rem;
+  text-align: right;
+}
+
+.btn-save, .btn-unsave {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.2s;
+}
+
+.btn-save {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-save:hover {
+  background-color: #0069d9;
+}
+
+.btn-unsave {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-unsave:hover {
+  background-color: #5a6268;
+}
+
+  .pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1.5rem;
+    padding: 0.5rem 0;
+  }
+
+  .pagination-btn {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  .pagination-btn:hover:not(:disabled) {
+    background-color: #0069d9;
+  }
+
+  .pagination-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+  }
+
+  .pagination-info {
+    color: #6c757d;
+    font-size: 0.9rem;
+  }
+
+  .comment-form h3 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    color: #333;
   }
 </style>
