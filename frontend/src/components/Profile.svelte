@@ -13,6 +13,8 @@
   let activeTab = 'posts'; // 'posts', 'saved', 'images', or 'settings'
   let savedPosts = [];
   let imageDeleteLoading = false;
+  let allPosts = [];
+  let loadingAllPosts = false;
 
   userStore.subscribe(value => {
     user = value;
@@ -102,10 +104,6 @@
     }
   }
 
-  function setTab(tab) {
-    activeTab = tab;
-  }
-
   // Функция для форматирования даты
   function formatDate(dateString) {
     const date = new Date(dateString);
@@ -122,6 +120,46 @@
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
     else return (bytes / 1048576).toFixed(1) + ' MB';
   }
+
+	function isAdmin(userId) {
+	  return userId === '1';
+	}
+
+function setTab(tab) {
+  activeTab = tab;
+
+  // Load admin data when needed
+  if (tab === 'admin' && isAdmin(user.id) && allPosts.length === 0) {
+    loadAllPosts();
+  }
+}
+
+async function loadAllPosts() {
+  if (!isAdmin(user.id)) return;
+
+  loadingAllPosts = true;
+  try {
+    allPosts = await api.getPosts();
+    loadingAllPosts = false;
+  } catch (err) {
+    error = err.message;
+    loadingAllPosts = false;
+  }
+}
+
+async function deletePost(postId) {
+  if (!confirm('Вы уверены, что хотите удалить этот пост?')) {
+    return;
+  }
+
+  try {
+    await api.deletePost(postId);
+    // Refresh the list
+    allPosts = allPosts.filter(post => post.id !== postId);
+  } catch (err) {
+    error = err.message;
+  }
+}
 
   $: if (activeTab === 'saved' && user) {
     loadSavedPosts();
@@ -150,9 +188,12 @@
           <div class="profile-avatar">
             <div class="avatar-placeholder">{userInfo.username.charAt(0).toUpperCase()}</div>
           </div>
-          <div class="profile-details">
-            <h2>{userInfo.username}</h2>
-            <p class="profile-email">{userInfo.email}</p>
+		 <div class="profile-details">
+		  <h2>{userInfo.username}</h2>
+		  {#if isAdmin(userInfo.id)}
+			<div class="admin-badge">Администратор</div>
+		  {/if}
+		  <p class="profile-email">{userInfo.email}</p>
             <p class="profile-date">Участник с {formatDate(userInfo.created_at)}</p>
             <div class="token-info">
               <p>Срок действия токена: <strong>{$tokenExpiration} сек.</strong></p>
@@ -161,32 +202,42 @@
         </div>
       </div>
 
-      <div class="profile-tabs">
-        <button
-          class="tab {activeTab === 'posts' ? 'active' : ''}"
-          on:click={() => setTab('posts')}
-        >
-          Мои посты ({userPosts.length})
-        </button>
-        <button
-          class="tab {activeTab === 'saved' ? 'active' : ''}"
-          on:click={() => setTab('saved')}
-        >
-          Сохраненные
-        </button>
-        <button
-          class="tab {activeTab === 'images' ? 'active' : ''}"
-          on:click={() => setTab('images')}
-        >
-          Изображения
-        </button>
-        <button
-          class="tab {activeTab === 'settings' ? 'active' : ''}"
-          on:click={() => setTab('settings')}
-        >
-          Настройки
-        </button>
-      </div>
+		<div class="profile-tabs">
+		  <button
+			class="tab {activeTab === 'posts' ? 'active' : ''}"
+			on:click={() => setTab('posts')}
+		  >
+			Мои посты ({userPosts.length})
+		  </button>
+		  <button
+			class="tab {activeTab === 'saved' ? 'active' : ''}"
+			on:click={() => setTab('saved')}
+		  >
+			Сохраненные
+		  </button>
+		  <button
+			class="tab {activeTab === 'images' ? 'active' : ''}"
+			on:click={() => setTab('images')}
+		  >
+			Изображения
+		  </button>
+		  <button
+			class="tab {activeTab === 'settings' ? 'active' : ''}"
+			on:click={() => setTab('settings')}
+		  >
+			Настройки
+		  </button>
+
+		  <!-- Show admin tab only for user with ID 1 -->
+		  {#if isAdmin(user.id)}
+			<button
+			  class="tab admin-tab {activeTab === 'admin' ? 'active' : ''}"
+			  on:click={() => setTab('admin')}
+			>
+			  Админ-панель
+			</button>
+		  {/if}
+		</div>
 
       <div class="profile-content">
         {#if activeTab === 'posts'}
@@ -298,12 +349,142 @@
             <UserSettings />
           </div>
         {/if}
+        {#if activeTab === 'admin'}
+		  <div class="tab-panel">
+			<h3>Панель администратора</h3>
+			<p class="admin-info">Как администратор, вы можете управлять любыми постами, комментариями и изображениями.</p>
+
+			{#if loadingAllPosts}
+			  <div class="loading-container">
+				<div class="loading-spinner"></div>
+				<p>Загрузка всех постов...</p>
+			  </div>
+			{:else if allPosts.length === 0}
+			  <div class="empty-state">
+				<p>Постов пока нет.</p>
+			  </div>
+			{:else}
+			  <h4>Все посты на платформе ({allPosts.length})</h4>
+			  <div class="admin-post-list">
+				{#each allPosts as post}
+				  <div class="admin-post-item">
+					<div class="admin-post-info">
+					  <h5>
+						<Link to={`/post/${post.id}`}>{post.title}</Link>
+					  </h5>
+					  <div class="admin-post-meta">
+						<span class="admin-post-author">Автор: {post.username}</span>
+						<span class="admin-post-date">Дата: {formatDate(post.created_at)}</span>
+					  </div>
+					</div>
+					<div class="admin-post-actions">
+					  <Link to={`/edit/${post.id}`} class="admin-edit-btn">Редактировать</Link>
+					  <Link to={`/post/${post.id}`} class="admin-view-btn">Просмотр</Link>
+					  <button class="admin-delete-btn" on:click={() => deletePost(post.id)}>Удалить</button>
+					</div>
+				  </div>
+				{/each}
+			  </div>
+			{/if}
+		  </div>
+		{/if}
+
       </div>
     </div>
   {/if}
 </div>
 
 <style>
+	.admin-badge {
+	  display: inline-block;
+	  background-color: #dc3545;
+	  color: white;
+	  padding: 0.25rem 0.5rem;
+	  border-radius: 1rem;
+	  font-size: 0.75rem;
+	  margin-bottom: 0.5rem;
+	}
+	.admin-tab {
+  background-color: #dc3545;
+  color: white;
+}
+
+.admin-tab:hover {
+  background-color: #c82333;
+}
+
+.admin-info {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+}
+
+.admin-post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-post-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.admin-post-info {
+  flex: 1;
+}
+
+.admin-post-info h5 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
+
+.admin-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.admin-post-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.admin-edit-btn, .admin-view-btn, .admin-delete-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  text-decoration: none;
+}
+
+.admin-edit-btn {
+  background-color: #17a2b8;
+  color: white;
+}
+
+.admin-view-btn {
+  background-color: #6c757d;
+  color: white;
+}
+
+.admin-delete-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.admin-delete-btn:hover {
+  background-color: #c82333;
+}
   .profile-page {
     max-width: 800px;
     margin: 0 auto;

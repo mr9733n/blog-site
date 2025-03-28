@@ -21,32 +21,37 @@
     user = value;
   });
 
-  onMount(async () => {
-    // Проверка авторизации
-    if (!user) {
-      navigate("/login", { replace: true });
-      return;
-    }
+	onMount(async () => {
+	  // Проверка авторизации
+	  if (!user) {
+		navigate("/login", { replace: true });
+		return;
+	  }
 
-    try {
-      // Загрузка информации о посте
-      post = await api.getPost(id);
+	  loading = true;
 
-      // Проверка прав на редактирование
-      if (post.author_id !== parseInt(user.id)) {
-        navigate(`/post/${id}`, { replace: true });
-        return;
-      }
+	  try {
+		// Загрузка информации о посте
+		post = await api.getPost(id);
 
-      // Заполнение полей формы
-      title = post.title;
-      content = post.content;
-      loading = false;
-    } catch (err) {
-      error = err.message;
-      loading = false;
-    }
-  });
+		// Check if user is admin (ID = 1)
+		const isAdmin = user.id === '1';
+
+		// Проверка прав на редактирование (now supports admin)
+		if (!isAdmin && post.author_id !== parseInt(user.id)) {
+		  navigate(`/post/${id}`, { replace: true });
+		  return;
+		}
+
+		// Заполнение полей формы
+		title = post.title;
+		content = post.content;
+		loading = false;
+	  } catch (err) {
+		error = err.message;
+		loading = false;
+	  }
+	});
 
   async function handleSubmit() {
     error = "";

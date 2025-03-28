@@ -270,7 +270,7 @@ def update_post(post_id):
         logger.error(f"Пост {post_id} не найден")
         return jsonify({"msg": "Пост не найден"}), 404
 
-    # Проверка прав на редактирование
+    # Проверка прав на редактирование (now uses can_user_edit_post which includes admin check)
     if not Post.can_user_edit_post(post_id, user_id):
         logger.error(f"Пользователь {user_id} не имеет прав для редактирования поста {post_id}")
         return jsonify({"msg": "Нет прав для редактирования"}), 403
@@ -303,8 +303,8 @@ def delete_post(post_id):
     if not post:
         return jsonify({"msg": "Пост не найден"}), 404
 
-    # Проверка прав на удаление
-    if post['author_id'] != current_user_id:
+    # Проверка прав на удаление (now uses can_user_edit_post which includes admin check)
+    if not Post.can_user_edit_post(post_id, current_user_id):
         return jsonify({"msg": "Нет прав для удаления"}), 403
 
     try:
@@ -394,8 +394,8 @@ def update_comment(comment_id):
     if not comment:
         return jsonify({"msg": "Комментарий не найден"}), 404
 
-    # Проверка прав на редактирование
-    if comment['author_id'] != current_user_id:
+    # Проверка прав на редактирование (use new can_user_edit_comment that includes admin check)
+    if not Comment.can_user_edit_comment(comment_id, current_user_id):
         return jsonify({"msg": "Нет прав для редактирования комментария"}), 403
 
     if not data.get('content', '').strip():
@@ -635,8 +635,8 @@ def delete_image(image_id):
         if not image:
             return jsonify({"msg": "Изображение не найдено"}), 404
 
-        # Проверка прав на удаление
-        if image['author_id'] != user_id:
+        # Проверка прав на удаление (use can_user_manage_image to include admin)
+        if not Image.can_user_manage_image(image_id, user_id):
             return jsonify({"msg": "Нет прав для удаления изображения"}), 403
 
         # Удаляем изображение
@@ -663,8 +663,8 @@ def attach_image_to_post(image_id, post_id):
         if not image:
             return jsonify({"msg": "Изображение не найдено"}), 404
 
-        # Проверка прав на изменение изображения
-        if image['author_id'] != user_id:
+        # Проверка прав на изменение изображения (include admin check)
+        if not Image.can_user_manage_image(image_id, user_id):
             return jsonify({"msg": "Нет прав для изменения изображения"}), 403
 
         # Проверка существования поста
@@ -672,8 +672,8 @@ def attach_image_to_post(image_id, post_id):
         if not post:
             return jsonify({"msg": "Пост не найден"}), 404
 
-        # Проверка прав на редактирование поста
-        if post['author_id'] != user_id:
+        # Проверка прав на редактирование поста (include admin check)
+        if not Post.can_user_edit_post(post_id, user_id):
             return jsonify({"msg": "Нет прав для добавления изображения к этому посту"}), 403
 
         # Привязываем изображение к посту
@@ -700,8 +700,8 @@ def detach_image_from_post(image_id):
         if not image:
             return jsonify({"msg": "Изображение не найдено"}), 404
 
-        # Проверка прав на изменение изображения
-        if image['author_id'] != user_id:
+        # Проверка прав на изменение изображения (include admin check)
+        if not Image.can_user_manage_image(image_id, user_id):
             return jsonify({"msg": "Нет прав для изменения изображения"}), 403
 
         # Отвязываем изображение от поста (устанавливаем post_id = NULL)

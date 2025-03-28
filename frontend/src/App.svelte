@@ -79,7 +79,9 @@
             <li><button on:click={() => { handleLogout(); handleLinkClick(); }}>Выйти</button></li>
           {:else}
             <li><Link to="/login" on:click={handleLinkClick}>Войти</Link></li>
+           <!-- TODO: Removed cuz unnecessary, signup can be provided from login page
             <li><Link to="/register" on:click={handleLinkClick}>Регистрация</Link></li>
+           -->
           {/if}
         </ul>
         <ThemeToggle />

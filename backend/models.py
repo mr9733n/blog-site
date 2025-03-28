@@ -37,6 +37,11 @@ def commit_db():
 class User:
     """Модель пользователя"""
 
+    def is_admin(user_id):
+        """Check if a user has admin privileges"""
+        # Simple check - user with ID 1 is admin
+        return int(user_id) == 1
+
     @staticmethod
     def get_by_id(user_id):
         """Получить пользователя по ID"""
@@ -213,9 +218,13 @@ class Post:
             [post_id]
         )
 
-    @staticmethod
     def can_user_edit_post(post_id, user_id):
-        """Проверить, может ли пользователь редактировать пост"""
+        """Check if user can edit a post (owner or admin)"""
+        # Admin can edit any post
+        if User.is_admin(user_id):
+            return True
+
+        # Regular check for post owner
         post = Post.get_by_id(post_id)
         if not post:
             return False
@@ -426,6 +435,20 @@ class Image:
         return True
 
 
+    @staticmethod
+    def can_user_manage_image(image_id, user_id):
+        """Check if user can manage an image (owner or admin)"""
+        # Admin can manage any image
+        if User.is_admin(user_id):
+            return True
+
+        image = Image.get_by_id(image_id)
+        if not image:
+            return False
+
+        return image['author_id'] == user_id
+
+
 # Класс SavedPost
 class SavedPost:
     """Модель для сохраненных постов"""
@@ -548,19 +571,36 @@ class Comment:
 
     @staticmethod
     def can_user_delete_comment(comment_id, user_id):
-        """Проверить, может ли пользователь удалить комментарий
-        (если он автор комментария или автор поста)"""
+        """Check if user can delete comment (owner, post owner, or admin)"""
+        # Admin can delete any comment
+        if User.is_admin(user_id):
+            return True
+
         comment = Comment.get_by_id(comment_id)
         if not comment:
             return False
 
-        # Если пользователь - автор комментария
+        # Author of comment can delete it
         if comment['author_id'] == user_id:
             return True
 
-        # Если пользователь - автор поста
+        # Author of post can delete comments on their post
         post = Post.get_by_id(comment['post_id'])
         if post and post['author_id'] == user_id:
             return True
 
         return False
+
+    @staticmethod
+    def can_user_edit_comment(comment_id, user_id):
+        """Check if user can edit comment (owner or admin)"""
+        # Admin can edit any comment
+        if User.is_admin(user_id):
+            return True
+
+        comment = Comment.get_by_id(comment_id)
+        if not comment:
+            return False
+
+        # Only the author can edit their comment (or admin)
+        return comment['author_id'] == user_id

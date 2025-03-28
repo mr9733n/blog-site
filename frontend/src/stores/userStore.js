@@ -28,6 +28,10 @@ export function isTokenExpired(token, bufferSeconds = 0) {
   }
 }
 
+export function isAdmin(user) {
+  return user && user.id === '1'; // Admin is user with ID 1
+}
+
 // Обновление времени активности (добавьте где-то в основном файле приложения)
 export function updateUserActivity() {
   lastUserActivity = Date.now();
@@ -288,29 +292,32 @@ export const api = {
   },
   
   // Получение списка постов с пагинацией
-  async getPosts(limit = null, offset = null) {
-    try {
-      let url = `${API_URL}/posts`;
-      const params = new URLSearchParams();
-      
-      if (limit !== null) params.append('limit', limit);
-      if (offset !== null) params.append('offset', offset);
-      
-      const queryString = params.toString();
-      if (queryString) url += `?${queryString}`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error('Ошибка загрузки постов');
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-      return [];
-    }
-  },
+	async getPosts(limit = null, offset = null) {
+	  try {
+		let url = `${API_URL}/posts`;
+		const params = new URLSearchParams();
+
+		if (limit !== null) params.append('limit', limit);
+		if (offset !== null) params.append('offset', offset);
+
+		const queryString = params.toString();
+		if (queryString) url += `?${queryString}`;
+
+		// For admin users, we might want to get all posts
+		// You could also create a new endpoint like /api/admin/posts
+		// For now, we'll use the existing endpoint
+		const response = await fetch(url);
+
+		if (!response.ok) {
+		  throw new Error('Ошибка загрузки постов');
+		}
+
+		return await response.json();
+	  } catch (error) {
+		console.error('Error fetching posts:', error);
+		return [];
+	  }
+	},
   
   // Получение одного поста
   async getPost(id) {

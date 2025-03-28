@@ -1,7 +1,7 @@
 <script>
   import { onMount, afterUpdate } from "svelte";
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { api, userStore, isAdmin } from "../stores/userStore";
   import { renderMarkdown } from "../utils/markdown";
 
   export let id; // ID поста из параметра маршрута
@@ -245,30 +245,36 @@ afterUpdate(() => {
   }
 
   // Проверка, является ли пользователь автором поста
-  function isAuthor() {
-    return user && post && post.author_id === parseInt(user.id);
-  }
+	function isAuthor() {
+	  return (user && post && post.author_id === parseInt(user.id)) || isAdmin(user);
+	}
 
-  function canDeleteComment(comment) {
-    if (!user || !comment) return false;
+	function canDeleteComment(comment) {
+	  if (!user || !comment) return false;
 
-    // Проверяем, является ли пользователь автором комментария или автором поста
-    const userId = parseInt(user.id);
-    const commentAuthorId = parseInt(comment.author_id);
-    const postAuthorId = parseInt(post.author_id);
+	  // Check if user is admin
+	  if (isAdmin(user)) return true;
 
-    return userId === commentAuthorId || userId === postAuthorId;
-  }
+	  // Else check standard permissions
+	  const userId = parseInt(user.id);
+	  const commentAuthorId = parseInt(comment.author_id);
+	  const postAuthorId = parseInt(post.author_id);
 
-  function canEditComment(comment) {
-    if (!user || !comment) return false;
+	  return userId === commentAuthorId || userId === postAuthorId;
+	}
 
-    // Только автор комментария может его редактировать
-    const userId = parseInt(user.id);
-    const commentAuthorId = parseInt(comment.author_id);
+	function canEditComment(comment) {
+	  if (!user || !comment) return false;
 
-    return userId === commentAuthorId;
-  }
+	  // Admin can edit any comment
+	  if (isAdmin(user)) return true;
+
+	  // Only author can edit their own comment
+	  const userId = parseInt(user.id);
+	  const commentAuthorId = parseInt(comment.author_id);
+
+	  return userId === commentAuthorId;
+	}
 
   function sanitizeHTML(str) {
     const temp = document.createElement('div');
