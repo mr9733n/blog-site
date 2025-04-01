@@ -9,7 +9,16 @@ services:
     environment:
       - FLASK_ENV=production
       - FLASK_DEBUG=0
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    volumes:
+      - ./database.db:/app/backend/database.db
+      - ./logs:/app/logs
+    ports:
+      - "5000:5000"
     restart: always
+
 
   # Сервис для фронтенда (Svelte в продакшн-режиме через Nginx)
   frontend:

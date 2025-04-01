@@ -42,4 +42,4 @@ RUN find . -type d -name "__pycache__" -exec rm -rf {} + \
 EXPOSE 5000
 
 # Запускаем приложение
-CMD ["flask", "run", "--host=0.0.0.0"]
+CMD ["gunicorn", "--config", "gunicorn_config.py", "wsgi:app"]

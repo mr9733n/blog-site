@@ -121,8 +121,8 @@ onDestroy(() => {
 
   .close-modal {
     position: absolute;
-    top: -40px;
-    right: 0;
+    top: -20px;
+    right: 2px;
     color: #f1f1f1;
     font-size: 40px;
     font-weight: bold;
