@@ -133,7 +133,11 @@ async function authFetch(url, options = {}) {
       logout(); // Используем функцию logout вместо повторения кода
       throw new Error('Сессия истекла из-за неактивности. Пожалуйста, войдите снова.');
     }
-
+	const refreshToken = localStorage.getItem('refreshToken');
+	if (!refreshToken) {
+	  logout();
+	  throw new Error('Нет доступного токена обновления. Пожалуйста, войдите снова.');
+	}
     // Если пользователь активен, предварительно обновляем токен
     const refreshSuccess = await api.refreshToken();
     if (!refreshSuccess) {
@@ -617,9 +621,8 @@ async createPost(title, content) {
 	},
 
 
-	async uploadImage(file, postId = null) {
+  async uploadImage(file, postId = null) {
 	  try {
-		// Создаем FormData для отправки файла
 		const formData = new FormData();
 		formData.append('file', file);
 
@@ -633,8 +636,22 @@ async createPost(title, content) {
 		});
 
 		if (!response.ok) {
-		  const error = await response.json();
-		  throw new Error(error.msg || 'Ошибка загрузки изображения');
+		  // Проверяем тип контента ответа
+		  const contentType = response.headers.get('content-type');
+
+		  if (contentType && contentType.includes('application/json')) {
+			// Если JSON, парсим обычным способом
+			const error = await response.json();
+			throw new Error(error.msg || 'Ошибка загрузки изображения');
+		  } else {
+			// Если не JSON (например HTML), показываем более понятное сообщение
+			if (response.status === 413) {
+			  throw new Error('Файл слишком большой. Максимальный размер - 5 МБ');
+			} else {
+			  // Для других ошибок показываем код статуса
+			  throw new Error(`Ошибка сервера (${response.status}). Попробуйте файл меньшего размера или другого формата.`);
+			}
+		  }
 		}
 
 		return await response.json();

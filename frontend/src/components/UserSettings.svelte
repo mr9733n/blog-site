@@ -20,7 +20,11 @@
       // Преобразуем секунды в минуты
       tokenLifetimeMinutes = Math.round(parseInt(storedTokenLifetime) / 60);
     }
-
+	const storedRefreshTokenLifetime = localStorage.getItem('refreshTokenLifetime');
+	if (storedRefreshTokenLifetime) {
+	  // Преобразуем секунды в дни
+	  refreshTokenLifetimeDays = Math.round(parseInt(storedRefreshTokenLifetime) / 86400);
+	}
     // В будущем можно также загружать из API, если мы сохраняем эти значения в БД
   });
 
@@ -55,6 +59,7 @@
 
       // Обновляем значение в локальном хранилище
       localStorage.setItem('tokenLifetime', tokenLifetimeSeconds.toString());
+      localStorage.setItem('refreshTokenLifetime', refreshTokenLifetimeSeconds.toString());
 
     } catch (err) {
       error = err.message;

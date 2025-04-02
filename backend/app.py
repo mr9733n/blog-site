@@ -3,6 +3,7 @@ import sqlite3
 import logging
 import datetime
 import json
+import sys
 
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
@@ -13,7 +14,9 @@ from jwt import decode
 from backend.config import get_config
 from backend.models import User, get_db
 from backend.routes import auth_bp, admin_bp, posts_bp, images_bp
+from backend.routes.auth import jwt_handlers
 
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 load_dotenv()
 
 def configure_logging(app):
@@ -51,7 +54,7 @@ else:
 jwt = JWTManager(app)
 
 # Регистрация обработчиков JWT
-from backend.routes.auth import jwt_handlers
+
 jwt_handlers(jwt)
 
 # Закрытие соединения с БД после обработки запроса

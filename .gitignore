@@ -3,3 +3,11 @@ backend/__pycache__/*
 .env
 blog-site.zip
 database.db
+backend/backend/__pycache__/*
+backend/backend/models/__pycache__/*
+backend/backend/routes/__pycache__/*
+backend/backend/services/__pycache__/*
+backend/api/__pycache__/*
+backend/api/models/__pycache__/*
+backend/api/routes/__pycache__/*
+backend/api/services/__pycache__/*

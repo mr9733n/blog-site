@@ -19,9 +19,14 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = 30 * 60  # 30 minutes in seconds
     JWT_REFRESH_TOKEN_EXPIRES = 15 * 24 * 60 * 60  # 15 days in seconds
 
-    # Настройки для загрузки файлов
+    # Настройки для изображений
+    ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    MAX_UPLOAD_IMAGE_SIZE = 5 * 1024 * 1024  # 1MB
+    MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 1MB
+    MAX_IMAGE_DIMENSIONS = (1360, 768)  # Maximum width and height
+
+    # Общие настройки для загрузки файлов
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload size
-    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 
 class DevelopmentConfig(Config):

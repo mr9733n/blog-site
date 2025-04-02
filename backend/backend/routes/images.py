@@ -11,11 +11,32 @@ images_bp = Blueprint('images', __name__)
 @images_bp.before_request
 def check_request_size():
     if request.method == 'POST' and request.path.endswith('/upload'):
-        # Check content length
-        content_length = request.headers.get('Content-Length', type=int)
-        if content_length and content_length > Image.MAX_IMAGE_SIZE:
+        # Проверка наличия файла в запросе
+        if 'file' not in request.files:
+            return jsonify({"msg": "Файл не найден в запросе"}), 400
+
+        file = request.files['file']
+
+        # Проверка, что файл выбран
+        if file.filename == '':
+            return jsonify({"msg": "Файл не выбран"}), 400
+
+        # Проверка типа файла перед чтением всего содержимого
+        if not Image.allowed_file(file.filename):
+            return jsonify({"msg": "Недопустимый формат файла"}), 400
+
+        # Промежуточная проверка размера файла перед полной обработкой
+        max_upload_size = current_app.config['MAX_UPLOAD_IMAGE_SIZE']
+
+        # Используем seek для безопасного чтения размера файла
+        file.seek(0, 2)  # Перемещаем указатель в конец файла
+        file_size = file.tell()
+        file.seek(0)  # Возвращаем указатель в начало
+
+        # Предварительная проверка размера файла
+        if file_size > max_upload_size:
             return jsonify({
-                "msg": f"Размер загружаемого файла превышает допустимый (максимум {Image.MAX_IMAGE_SIZE // 1024 // 1024}MB)"
+                "msg": f"Размер загружаемого файла превышает допустимый (максимум {max_upload_size // 1024 // 1024}MB)"
             }), 413  # Request Entity Too Large
 
 # Загрузка изображения
