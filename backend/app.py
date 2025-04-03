@@ -12,9 +12,13 @@ from dotenv import load_dotenv
 from jwt import decode
 
 from backend.config import get_config
-from backend.models import User, get_db
-from backend.routes import auth_bp, admin_bp, posts_bp, images_bp
-from backend.routes.auth import jwt_handlers
+from backend.models.user import User
+from backend.models.base import get_db
+from backend.models.token_blacklist import TokenBlacklist
+from backend.routes.admin import admin_bp
+from backend.routes.posts import posts_bp
+from backend.routes.images import images_bp
+from backend.routes.auth import auth_bp, jwt_handlers
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 load_dotenv()
@@ -54,8 +58,10 @@ else:
 jwt = JWTManager(app)
 
 # Регистрация обработчиков JWT
-
 jwt_handlers(jwt)
+
+# In app.py
+app.config['JWT_IDENTITY_CLAIM'] = 'sub'  # Ensure this is 'sub' (default)
 
 # Закрытие соединения с БД после обработки запроса
 @app.teardown_appcontext
@@ -68,7 +74,8 @@ def close_connection(exception):
 def init_db():
     with app.app_context():
         db = g._database = sqlite3.connect(app.config['DATABASE_PATH'])
-        with app.open_resource('schema.sql', mode='r', encoding='utf-8') as f:
+        schema = app.config['SCHEMA_PATH']
+        with app.open_resource(schema, mode='r', encoding='utf-8') as f:
             db.cursor().executescript(f.read())
         db.commit()
 
@@ -82,6 +89,7 @@ def setup():
 with app.app_context():
     # Запускаем функцию setup() при старте приложения
     setup()
+    TokenBlacklist.clear_expired_tokens()
 
 @app.before_request
 def log_request_info():
@@ -112,6 +120,14 @@ def check_if_user_blocked():
             except Exception as e:
                 # Пропускаем ошибки декодирования токена
                 pass
+
+@jwt.token_in_blocklist_loader
+def check_if_token_is_revoked(jwt_header, jwt_payload):
+    jti = jwt_payload.get('jti')
+    is_blacklisted = TokenBlacklist.is_token_blacklisted(jti)
+    if is_blacklisted:
+        logger.warning(f"🔒 Заблокированный токен с jti={jti} попытался использоваться")
+    return is_blacklisted
 
 # Регистрация Blueprint-ов
 app.register_blueprint(auth_bp, url_prefix='/api')

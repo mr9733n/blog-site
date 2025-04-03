@@ -179,13 +179,4 @@
     color: #6c757d;
     font-size: 0.9rem;
   }
-
-  .form-footer a {
-    color: #007bff;
-    text-decoration: none;
-  }
-
-  .form-footer a:hover {
-    text-decoration: underline;
-  }
 </style>

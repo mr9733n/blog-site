@@ -2,7 +2,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from backend.models import Post, Comment, SavedPost
+from backend.models import User, Post, Comment, SavedPost
+
 
 posts_bp = Blueprint('posts', __name__)
 
@@ -29,16 +30,33 @@ def get_post(post_id):
 @posts_bp.route('/posts', methods=['POST'])
 @jwt_required()
 def create_post():
-    current_user_id = get_jwt_identity()
-    # Convert string ID back to integer
-    current_user_id = int(current_user_id)
-    data = request.get_json()
+    # Log the request details for debugging
+    # current_app.logger.debug(f"Request Content-Type: {request.content_type}")
+    # current_app.logger.debug(f"Request headers: {dict(request.headers)}")
 
+    # Check if the request contains valid JSON
     try:
+        if not request.is_json:
+            return jsonify({"msg": "Expected 'application/json' Content-Type"}), 415
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"msg": "Invalid JSON or empty request body"}), 400
+
+        # Validate required fields
+        if 'title' not in data or 'content' not in data:
+            return jsonify({"msg": "Missing required fields: title, content"}), 400
+
+        # Get user ID from token
+        current_user_id = get_jwt_identity()
+        current_user_id = int(current_user_id)
+
+        # Create post
         post = Post.create(data['title'], data['content'], current_user_id)
         return jsonify({"msg": "Пост успешно создан", "post_id": post['id']}), 201
+
     except Exception as e:
-        current_app.logger.error(f"Ошибка создания поста: {str(e)}")
+        current_app.logger.error(f"Error creating post: {str(e)}")
         return jsonify({"msg": "Произошла ошибка при создании поста"}), 500
 
 # Маршрут для обновления поста

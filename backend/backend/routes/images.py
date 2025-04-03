@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from io import BytesIO
 
-from backend.models import Image, Post
+from backend.models import User, Image, Post
 
 images_bp = Blueprint('images', __name__)
 
@@ -43,12 +43,21 @@ def check_request_size():
 @images_bp.route('/images/upload', methods=['POST'])
 @jwt_required()
 def upload_image():
-    current_user_id = get_jwt_identity()
-    user_id = int(current_user_id)
+    current_app.logger.debug(f"Request Content-Type: {request.content_type}")
+    current_app.logger.debug(f"Available files: {list(request.files.keys()) if request.files else 'None'}")
+    current_app.logger.debug(f"Available form fields: {list(request.form.keys()) if request.form else 'None'}")
 
     # Проверка наличия файла в запросе
     if 'file' not in request.files:
         return jsonify({"msg": "Файл не найден в запросе"}), 400
+
+    current_user_id = get_jwt_identity()
+    # Convert string ID back to integer
+    current_user_id = int(current_user_id)
+    # Check User exists
+    user = User.get_by_id(current_user_id)
+    if not user:
+        return jsonify({"msg": "Пользователь не найден"}), 403
 
     file = request.files['file']
 
@@ -66,7 +75,7 @@ def upload_image():
             if not post:
                 return jsonify({"msg": "Пост не найден"}), 404
 
-            if post['author_id'] != user_id:
+            if post['author_id'] != current_user_id:
                 return jsonify({"msg": "Нет прав для добавления изображения к этому посту"}), 403
         except ValueError:
             return jsonify({"msg": "Некорректный ID поста"}), 400
@@ -75,7 +84,7 @@ def upload_image():
 
     try:
         # Сохраняем изображение
-        image = Image.save_file(file, user_id, post_id)
+        image = Image.save_file(file, current_user_id, post_id)
 
         # Формируем ответ с информацией о загруженном изображении
         # Remove the image_data field from the response to avoid serialization issues

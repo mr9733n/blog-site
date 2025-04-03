@@ -76,3 +76,12 @@ CREATE TABLE IF NOT EXISTS user_status (
     blocked_reason TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Добавить в schema.sql
+CREATE TABLE IF NOT EXISTS token_blacklist (
+    jti TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    blacklisted_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

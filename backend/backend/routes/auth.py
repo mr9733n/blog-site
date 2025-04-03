@@ -1,4 +1,6 @@
 # backend/routes/auth.py
+import uuid
+
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, \
     get_jwt
@@ -6,6 +8,7 @@ import datetime
 
 from backend.models import User
 from backend.services.auth_service import validate_login_credentials
+from backend.models.token_blacklist import TokenBlacklist
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -22,6 +25,11 @@ def jwt_handlers(jwt):
         current_app.logger.error(f"DEBUG: Unauthorized error: {error_string}")
         return jsonify({"msg": f"Unauthorized: {error_string}"}), 401
 
+    @jwt.token_in_blocklist_loader
+    def check_if_token_is_revoked(jwt_header, jwt_payload):
+        jti = jwt_payload.get('jti')
+        return TokenBlacklist.is_token_blacklisted(jti)
+
 
 # Маршрут для авторизации
 @auth_bp.route('/login', methods=['POST'])
@@ -34,26 +42,37 @@ def login():
         return jsonify({"msg": authentication_result['message']}), 401
 
     user = authentication_result['user']
-    user_id_str = str(user['id'])
+    user_id = user['id']
+
+    # Debug logging
+    current_app.logger.debug(f"User ID type: {type(user_id)}, value: {user_id}")
+
+    # Explicitly convert to string
+    user_id_str = str(user_id)
+    current_app.logger.debug(f"User ID string type: {type(user_id_str)}, value: {user_id_str}")
 
     # Проверка блокировки пользователя
-    if User.is_user_blocked(user['id']):
+    if User.is_user_blocked(user_id):
         return jsonify({"msg": "Ваш аккаунт заблокирован администратором"}), 403
 
     # Get user's token lifetime setting
-    token_lifetime = User.get_token_lifetime(user['id'])
+    token_lifetime = User.get_token_lifetime(user_id)
 
     # Create tokens
-    access_token = create_access_token(
-        identity=user_id_str,
-        expires_delta=datetime.timedelta(seconds=token_lifetime)
-    )
-    refresh_token = create_refresh_token(identity=user_id_str)
+    current_app.logger.debug(f"Creating access token with identity: {user_id_str}")
 
+    access_token = create_access_token(
+        identity=user_id_str,  # Explicitly as string
+        expires_delta=datetime.timedelta(seconds=token_lifetime),
+        additional_claims={'jti': str(uuid.uuid4())}
+    )
+    refresh_token = create_refresh_token(identity=user_id_str)  # Also ensure this is a string
+
+    # Return tokens
     return jsonify(
         access_token=access_token,
         refresh_token=refresh_token,
-        token_lifetime=token_lifetime
+        token_lifetime=token_lifetime,
     ), 200
 
 
@@ -74,26 +93,21 @@ def register():
 
 # Маршрут для обновления токена
 @auth_bp.route('/refresh', methods=['POST'])
-@jwt_required()  # Вместо jwt_required(refresh=True)
+@jwt_required(refresh=True)
 def refresh():
-    # Получить claims из текущего токена
     current_token = get_jwt()
+    jti = current_token.get('jti')
+    user_id = int(get_jwt_identity())
 
-    # Проверить, что это refresh токен
-    if current_token.get('token_type') != 'refresh':
-        return jsonify({"msg": "Требуется refresh token"}), 401
+    # Блокируем refresh токен
+    TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))
 
-    current_user_id = get_jwt_identity()
-    # Convert to int for database lookup
-    user_id = int(current_user_id)
-
-    # Get user's token lifetime setting
+    # Дальше создаем новый access токен
     token_lifetime = User.get_token_lifetime(user_id)
-
-    # Create new access token
     access_token = create_access_token(
-        identity=current_user_id,
-        expires_delta=datetime.timedelta(seconds=token_lifetime)
+        identity=str(user_id),
+        expires_delta=datetime.timedelta(seconds=token_lifetime),
+        additional_claims={'jti': str(uuid.uuid4())}
     )
 
     return jsonify(access_token=access_token, token_lifetime=token_lifetime), 200
@@ -158,3 +172,19 @@ def get_current_user():
     user_data.pop('password', None)
 
     return jsonify(user_data)
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    current_user_id = get_jwt_identity()
+    user_id = int(current_user_id)
+
+    # Получаем текущий токен
+    current_token = get_jwt()
+    jti = current_token.get('jti')
+
+    # Добавляем токен в черный список
+    TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))
+
+    return jsonify({"msg": "Вы успешно вышли из системы"}), 200

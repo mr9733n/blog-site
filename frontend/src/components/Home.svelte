@@ -332,20 +332,6 @@
     margin-top: 0.5rem;
   }
 
-  .read-more {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--accent-color);
-    font-weight: 500;
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  .read-more:hover {
-    color: var(--accent-hover);
-  }
-
   @media (max-width: 768px) {
     .post-meta {
       flex-direction: column;

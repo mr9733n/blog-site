@@ -469,23 +469,6 @@ async function deletePost(postId) {
   gap: 0.5rem;
 }
 
-.admin-edit-btn, .admin-view-btn, .admin-delete-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.85rem;
-  border-radius: 4px;
-  text-decoration: none;
-}
-
-.admin-edit-btn {
-  background-color: #17a2b8;
-  color: white;
-}
-
-.admin-view-btn {
-  background-color: #6c757d;
-  color: white;
-}
-
 .admin-delete-btn {
   background-color: #dc3545;
   color: white;
@@ -513,13 +496,6 @@ async function deletePost(postId) {
   .error {
     color: #721c24;
     background-color: #f8d7da;
-  }
-
-  .error a {
-    display: inline-block;
-    margin-top: 1rem;
-    color: #721c24;
-    font-weight: bold;
   }
 
   .profile-container {
@@ -648,21 +624,6 @@ async function deletePost(postId) {
     background-color: #5a6268;
   }
 
-  .create-post-btn {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background-color: #007bff;
-    color: white;
-    text-decoration: none;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-  }
-
-  .create-post-btn:hover {
-    background-color: #0069d9;
-  }
-
   .post-list {
     display: flex;
     flex-direction: column;
@@ -684,16 +645,6 @@ async function deletePost(postId) {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   }
 
-  .post-title {
-    flex: 1;
-  }
-
-  .post-title a {
-    color: #212529;
-    text-decoration: none;
-    font-weight: bold;
-  }
-
   .post-title a:hover {
     color: #007bff;
   }
@@ -707,32 +658,6 @@ async function deletePost(postId) {
   .post-actions {
     display: flex;
     gap: 0.5rem;
-  }
-
-  .edit-btn, .view-btn {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.9rem;
-    text-decoration: none;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-  }
-
-  .edit-btn {
-    background-color: #17a2b8;
-    color: white;
-  }
-
-  .edit-btn:hover {
-    background-color: #138496;
-  }
-
-  .view-btn {
-    background-color: #6c757d;
-    color: white;
-  }
-
-  .view-btn:hover {
-    background-color: #5a6268;
   }
 
   .unsave-btn {
@@ -810,15 +735,6 @@ async function deletePost(postId) {
   .image-post {
     font-size: 0.85rem;
     margin: 0;
-  }
-
-  .image-post a {
-    color: #007bff;
-    text-decoration: none;
-  }
-
-  .image-post a:hover {
-    text-decoration: underline;
   }
 
   .no-post {

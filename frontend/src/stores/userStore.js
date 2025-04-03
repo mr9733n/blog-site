@@ -4,11 +4,6 @@ import { writable, derived } from 'svelte/store';
 const storedToken = localStorage.getItem('authToken');
 let initialUser = null;
 
-// Время неактивности в миллисекундах, после которого не обновляем токен
-// Измените в userStore.js
-export const INACTIVITY_THRESHOLD = 30000; // 30 seconds
-let lastUserActivity = Date.now();
-
 export const tokenRefreshLoading = writable(false);
 
 // Функция для проверки срока действия токена
@@ -31,12 +26,6 @@ export function isTokenExpired(token, bufferSeconds = 0) {
 export function isAdmin(user) {
   return user && user.id === '1'; // Admin is user with ID 1
 }
-
-// Обновление времени активности (добавьте где-то в основном файле приложения)
-export function updateUserActivity() {
-  lastUserActivity = Date.now();
-}
-
 
 if (storedToken) {
   // Используем новую функцию вместо дублирования кода
@@ -116,37 +105,16 @@ export function checkTokenExpiration() {
 async function authFetch(url, options = {}) {
   let token = localStorage.getItem('authToken');
   if (!token) {
-    userStore.set(null); // Сбрасываем состояние, если нет токена
+    userStore.set(null);
     throw new Error('Необходима авторизация');
   }
 
-  // Проверяем срок действия токена ПЕРЕД запросом
+  // Simply check if token is expired
   if (isTokenExpired(token)) {
-    console.log('Токен истек, проверяем необходимость обновления');
-    // Проверка времени неактивности для истекшего токена
-    const currentTime = Date.now();
-    const inactiveTime = currentTime - lastUserActivity;
-
-    // Если пользователь был неактивен слишком долго, выходим
-    if (inactiveTime > INACTIVITY_THRESHOLD) {
-      console.log(`Пользователь был неактивен ${inactiveTime/1000} секунд, выход`);
-      logout(); // Используем функцию logout вместо повторения кода
-      throw new Error('Сессия истекла из-за неактивности. Пожалуйста, войдите снова.');
-    }
-	const refreshToken = localStorage.getItem('refreshToken');
-	if (!refreshToken) {
-	  logout();
-	  throw new Error('Нет доступного токена обновления. Пожалуйста, войдите снова.');
-	}
-    // Если пользователь активен, предварительно обновляем токен
-    const refreshSuccess = await api.refreshToken();
-    if (!refreshSuccess) {
-      logout(); // Используем функцию logout
-      throw new Error('Не удалось обновить сессию. Пожалуйста, войдите снова.');
-    }
-
-    // Получаем новый обновленный токен
-    token = localStorage.getItem('authToken');
+    // Token is expired, log out the user
+    console.log('Токен истек, выполняется выход из системы');
+    logout();
+    throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
   }
 
   // Убедимся, что заголовки инициализированы
@@ -157,12 +125,11 @@ async function authFetch(url, options = {}) {
   try {
     options.headers['Authorization'] = `Bearer ${token}`;
     const response = await fetch(url, options);
-    console.log(`Response status for ${url}:`, response.status);
 
-    // Если все еще получаем ошибку авторизации после обновления токена
+    // If token is rejected by server
     if (response.status === 401 || response.status === 422) {
-      console.log('Ошибка авторизации после попытки обновления токена');
-      logout(); // Используем функцию logout
+      console.log('Ошибка авторизации');
+      logout();
       throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
     }
 
@@ -178,6 +145,7 @@ export function logout() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('tokenLifetime');
+  localStorage.removeItem('refreshTokenLifetime');
   userStore.set(null);
   window.location.href = '/';
 }

@@ -11,7 +11,7 @@ class Config:
 
     # Настройки базы данных
     DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database.db')
-
+    SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
     # Настройки CORS
     CORS_ORIGINS_DEV = ['http://localhost:8080', 'http://localhost:5000', 'http://localhost:3000']
     CORS_ORIGINS_PROD = ['https://blog.666s.dev']

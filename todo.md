@@ -1,12 +1,13 @@
-# Blog-site 0.0.1.0
+# Blog-site 0.0.1.3
 
 ## Bugs:
 - [ ] Fix profile theme: night mode is not applied.
 - [ ] Fix input styling in night mode.
 - [ ] Fix inactive state visibility in Admin-post tab link (Admin-panel).
 - [ ] Fix styles in the CreatePost module.
-- [ ] Fix redirect and error message for failed image uploads.
+- [x] Fix redirect and error message for failed image uploads.
 - [ ] Fix production deployment setup.
+- [x] Fix check token on post and upload
 - [ ] ...
 
 ## Features:
@@ -34,7 +35,7 @@
 - [ ] ...
 
 ## Refactoring:
-- [ ] Optimize route structure.
+- [x] Optimize route structure.
 - [ ] Improve Svelte module organization.
 - [ ] ...
 
