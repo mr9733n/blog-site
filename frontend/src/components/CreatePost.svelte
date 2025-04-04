@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { checkTokenExpiration, logout, api, userStore } from "../stores/userStore";
   import { renderMarkdown } from "../utils/markdown";
 
   let title = "";
@@ -15,6 +15,11 @@
 
   // Проверка авторизации
   onMount(() => {
+      const isValid = checkTokenExpiration();
+    if (!isValid) {
+      console.warn('🔒 Токен истёк — разлогиниваем');
+      logout();
+    }
     const unsubscribe = userStore.subscribe(user => {
       if (!user) {
         navigate("/login", { replace: true });
@@ -474,7 +479,6 @@ async function handleFileSelect(event) {
     color: var(--text-primary);
     cursor: pointer;
     font-size: 0.9rem;
-    height: 32px;
   }
 
   .upload-btn:hover {

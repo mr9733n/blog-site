@@ -5,6 +5,7 @@ import './global.css';
 // Глобальное отслеживание активности пользователя
 window.addEventListener('click', updateUserActivity);
 window.addEventListener('keypress', updateUserActivity);
+window.addEventListener('touchstart', updateUserActivity);
 
 const app = new App({
   target: document.body,

@@ -141,7 +141,6 @@ onDestroy(() => {
     }
 
     .close-modal {
-      top: -35px;
       right: 0;
       font-size: 35px;
     }

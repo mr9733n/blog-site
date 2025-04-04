@@ -406,16 +406,16 @@ async function deletePost(postId) {
 </div>
 
 <style>
-	.admin-badge {
-	  display: inline-block;
-	  background-color: #dc3545;
-	  color: white;
-	  padding: 0.25rem 0.5rem;
-	  border-radius: 1rem;
-	  font-size: 0.75rem;
-	  margin-bottom: 0.5rem;
-	}
-	.admin-tab {
+.admin-badge {
+  display: inline-block;
+  background-color: #dc3545;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.admin-tab {
   background-color: #dc3545;
   color: white;
 }
@@ -507,7 +507,7 @@ async function deletePost(postId) {
 
   .profile-header {
     padding: 2rem;
-    background-color: #f8f9fa;
+    background-color: #bbb;
     border-bottom: 1px solid #dee2e6;
   }
 
@@ -562,32 +562,33 @@ async function deletePost(postId) {
     display: flex;
     border-bottom: 1px solid #dee2e6;
     flex-wrap: wrap;
+	background-color: #eee;
   }
 
   .tab {
-    background: none;
     border: none;
-    padding: 1rem 1.5rem;
+    padding: 0.5rem 0.5rem;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
+    border-bottom: 4px solid transparent;
     transition: all 0.2s;
     font-family: inherit;
     font-size: inherit;
   }
 
   .tab:hover {
-    color: #007bff;
+    color: #555;
     background-color: #f8f9fa;
   }
 
   .tab.active {
-    color: #007bff;
-    border-bottom-color: #007bff;
+    color: #fff;
+    border-bottom-color: #999;
     font-weight: bold;
   }
 
   .profile-content {
     padding: 2rem;
+    background-color: #ddd;
   }
 
   .tab-panel {
@@ -680,6 +681,7 @@ async function deletePost(postId) {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 1rem;
+    background-color: #eee;
   }
 
   .image-card {
@@ -701,7 +703,7 @@ async function deletePost(postId) {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f8f9fa;
+    background-color: #ddd;
     position: relative;
   }
 
@@ -759,7 +761,7 @@ async function deletePost(postId) {
   }
 
   .view-image-btn {
-    background-color: #17a2b8;
+    background-color: #bbb;
     color: white;
   }
 

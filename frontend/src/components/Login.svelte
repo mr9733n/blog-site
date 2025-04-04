@@ -92,7 +92,7 @@
   }
 
   .login-form {
-    background-color: #fff;
+    background-color: var(--btn-secondary-bg);
     border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 2rem 3.5rem 2rem 2rem;
@@ -104,7 +104,7 @@
     margin-top: 0;
     margin-bottom: 1.5rem;
     text-align: center;
-    color: #333;
+    color: var(--text-primary);
     font-size: 1.8rem;
   }
 
@@ -135,14 +135,14 @@
     display: block;
     margin-bottom: 0.5rem;
     font-weight: bold;
-    color: #495057;
+    color: var(--text-primary);
   }
 
   input {
     width: 100%;
     padding: 0.75rem;
     font-size: 1rem;
-    border: 1px solid #ced4da;
+    border: 1px solid #aea4ae;
     border-radius: 4px;
   }
 

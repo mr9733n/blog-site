@@ -1,21 +1,22 @@
 # Blog-site 0.0.1.3
 
 ## Bugs:
-- [ ] Fix profile theme: night mode is not applied.
-- [ ] Fix input styling in night mode.
-- [ ] Fix inactive state visibility in Admin-post tab link (Admin-panel).
-- [ ] Fix styles in the CreatePost module.
+- [x] Fix profile theme: night mode is not applied.
+- [x] Fix input styling in night mode.
+- [x] Fix styles in the CreatePost module.
 - [x] Fix redirect and error message for failed image uploads.
-- [ ] Fix production deployment setup.
 - [x] Fix check token on post and upload
+- [x] Check token on open Create Post
+- [ ] Fix inactive state visibility in Admin-post tab link (Admin-panel).
+- [ ] Fix production deployment setup.
 - [ ] ...
 
 ## Features:
-- [ ] Enhance Markdown renderer to support text justification
 - [x] Add a new screen in Profile: "Admin-users" (rename appropriately) for user list management.
 - [x] Create a new route and model for managing users.
 - [x] Add a new route and model for blocking users.
 - [x] Update the image list screen to allow navigation from the user list.
+- [ ] Enhance Markdown renderer to support text justification
 - [ ] Implement server-side pagination.
 - [ ] Add lazy loading on the frontend with server pagination.
 - [ ] Enable lazy load pagination for posts, comments, users, and images.

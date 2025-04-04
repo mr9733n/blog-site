@@ -30,7 +30,7 @@
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --btn-primary-bg: #007bff;
   --btn-primary-text: white;
-  --btn-secondary-bg: #6c757d;
+  --btn-secondary-bg: #dcdcdc;
   --btn-secondary-text: white;
   --btn-success-bg: #28a745;
   --btn-success-text: white;
@@ -105,7 +105,7 @@ input, textarea, select {
   font-size: 1rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  background-color: var(--bg-secondary);
+  background-color: var(--btn-secondary-bg);
   color: var(--text-primary);
   font-family: inherit;
   transition: border-color 0.2s;
