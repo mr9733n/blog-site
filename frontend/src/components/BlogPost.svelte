@@ -1,7 +1,9 @@
 <script>
   import { onMount, afterUpdate } from "svelte";
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore, isAdmin } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { isAdmin } from "../utils/authWrapper";
   import { renderMarkdown } from "../utils/markdown";
 
   export let id; // ID поста из параметра маршрута

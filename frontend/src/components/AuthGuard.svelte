@@ -2,31 +2,47 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { navigate } from 'svelte-routing';
-  import { userStore, isTokenExpired, updateUserActivity, INACTIVITY_THRESHOLD  } from '../stores/userStore';
+  import { userStore } from '../stores/userStore';
+  import { authFetch } from '../stores/authService';
+
+  export let childComponent; // Component to render when authenticated
 
   let user;
+  let loading = true;
+  let authenticated = false;
 
-  // Подписываемся на хранилище пользователя
-userStore.subscribe(value => {
-  user = value;
-  const token = localStorage.getItem('authToken');
-  // If user is not authenticated or token is expired, redirect to login
-  if (!user || !token || isTokenExpired(token)) {
-    navigate('/login', { replace: true });
-  }
-});
+  // Subscribe to user store
+  userStore.subscribe(value => {
+    user = value;
+  });
 
-  onMount(() => {
-    // Проверяем авторизацию сразу при монтировании
-    if (!user) {
+  onMount(async () => {
+    // Use authFetch to check authentication AND trigger token refresh if needed
+    try {
+      loading = true;
+
+      // Try to fetch the current user info to verify auth
+      await authFetch('/api/me');
+
+      // If we get here, the user is authenticated
+      authenticated = true;
+    } catch (err) {
+      console.warn('Authentication failed in AuthGuard:', err.message);
+      authenticated = false;
       navigate('/login', { replace: true });
-      return;
+    } finally {
+      loading = false;
     }
   });
 </script>
 
-{#if user}
-  <slot></slot>
+{#if loading}
+  <div class="auth-loading">
+    <div class="spinner"></div>
+    <p>Проверка аутентификации...</p>
+  </div>
+{:else if authenticated && user}
+  <svelte:component this={childComponent} />
 {:else}
   <div class="redirect-message">
     <div class="spinner"></div>
@@ -35,7 +51,7 @@ userStore.subscribe(value => {
 {/if}
 
 <style>
-  .redirect-message {
+  .auth-loading, .redirect-message {
     display: flex;
     flex-direction: column;
     align-items: center;

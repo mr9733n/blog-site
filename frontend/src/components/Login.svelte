@@ -1,6 +1,8 @@
 <script>
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { login } from "../stores/authService";
 
   let username = "";
   let password = "";
@@ -22,7 +24,7 @@
       return;
     }
 
-    const result = await api.login(username, password);
+    const result = await login(username, password);
 
     if (result.success) {
       navigate("/", { replace: true });

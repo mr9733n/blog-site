@@ -2,7 +2,9 @@
 <script>
   import { onMount } from 'svelte';
   import { Link, navigate } from "svelte-routing";
-  import { api } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { checkAuth, isAdmin } from "../utils/authWrapper";
+  import { userStore } from "../stores/userStore";
 
   let users = [];
   let loading = true;
@@ -106,7 +108,23 @@
   }
 
   // Загружаем список пользователей при монтировании компонента
-  onMount(loadUsers);
+  onMount(async () => {
+    // Verify authentication AND admin status
+    if (!(await checkAuth())) return;
+
+    let user;
+    userStore.subscribe(value => {
+      user = value;
+    });
+
+    if (!isAdmin(user)) {
+      navigate("/", { replace: true });
+      return;
+    }
+
+    // Load admin data
+    await loadUsers();
+  });
 </script>
 
 <div class="admin-users">

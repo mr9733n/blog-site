@@ -1,6 +1,6 @@
 <script>
   import { navigate } from "svelte-routing";
-  import { api } from "../stores/userStore";
+  import { api } from "../stores/apiService";
 
   let username = "";
   let email = "";

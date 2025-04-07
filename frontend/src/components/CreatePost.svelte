@@ -1,7 +1,10 @@
 <script>
   import { onMount } from "svelte";
   import { navigate } from "svelte-routing";
-  import { checkTokenExpiration, logout, api, userStore } from "../stores/userStore";
+  // Update import paths to use the new structure
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { authFetch } from "../stores/authService";
   import { renderMarkdown } from "../utils/markdown";
 
   let title = "";
@@ -12,28 +15,35 @@
   let renderedPreview = "";
   let imageUploadProgress = null;
   let uploadedImages = [];
+  let user = null;
 
-  // Проверка авторизации
-  onMount(() => {
-      const isValid = checkTokenExpiration();
-    if (!isValid) {
-      console.warn('🔒 Токен истёк — разлогиниваем');
-      logout();
+  userStore.subscribe(value => {
+    user = value;
+  });
+
+  // Improved authentication check that uses authFetch to trigger token refresh if needed
+  onMount(async () => {
+    try {
+      // This will trigger a token refresh if needed
+      await authFetch('/api/me');
+    } catch (err) {
+      // If authFetch fails, it means the user needs to log in again
+      console.warn('Authentication failed - redirecting to login');
+      navigate("/login", { replace: true });
+      return;
     }
-    const unsubscribe = userStore.subscribe(user => {
-      if (!user) {
-        navigate("/login", { replace: true });
-      }
-    });
 
-    return () => unsubscribe();
+    // If we get here, the authentication is valid (token refreshed if needed)
+    if (!user) {
+      navigate("/login", { replace: true });
+    }
   });
 
   async function handleSubmit() {
     error = "";
     loading = true;
 
-    // Валидация формы
+    // Validation
     if (!title.trim()) {
       error = "Заголовок не может быть пустым";
       loading = false;
@@ -55,6 +65,7 @@
     }
   }
 
+  // Rest of the component remains the same...
   function togglePreview() {
     previewMode = !previewMode;
     if (previewMode) {
@@ -93,7 +104,6 @@
         if (uploadedImages.length > 0) {
             // Use the most recently uploaded image
             const lastImage = uploadedImages[uploadedImages.length - 1];
-            // Вместо обертывания изображения в ссылку, просто вставляем само изображение
             insertion = `![${selectedText || lastImage.name}](${lastImage.url})`;
         } else {
             // No uploaded images, show error message
@@ -134,62 +144,58 @@
   }
 
   // Function to handle file selection
-async function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+  async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-  // Проверка типа файла
-  if (!file.type.startsWith('image/')) {
-    error = "Выбранный файл не является изображением";
-    return;
-  }
+    // Проверка типа файла
+    if (!file.type.startsWith('image/')) {
+      error = "Выбранный файл не является изображением";
+      return;
+    }
 
-  // Проверка размера файла
-  if (file.size > 5 * 1024 * 1024) {
-    error = "Размер файла не должен превышать 5MB";
-    return;
-  }
+    // Проверка размера файла
+    if (file.size > 5 * 1024 * 1024) {
+      error = "Размер файла не должен превышать 5MB";
+      return;
+    }
 
-  // Очистка ошибок и показ индикатора загрузки
-  error = "";
-  imageUploadProgress = 0;
+    // Очистка ошибок и показ индикатора загрузки
+    error = "";
+    imageUploadProgress = 0;
 
-  try {
-    // Вместо создания локального blob-URL, загружаем файл на сервер
-    const simulateProgress = setInterval(() => {
-      imageUploadProgress += 10;
-      if (imageUploadProgress >= 90) clearInterval(simulateProgress);
-    }, 100);
+    try {
+      // Вместо создания локального blob-URL, загружаем файл на сервер
+      const simulateProgress = setInterval(() => {
+        imageUploadProgress += 10;
+        if (imageUploadProgress >= 90) clearInterval(simulateProgress);
+      }, 100);
 
-    // Загрузка файла на сервер через API
-    const response = await api.uploadImage(file);
-    clearInterval(simulateProgress);
-    imageUploadProgress = 100;
+      // Загрузка файла на сервер через API
+      const response = await api.uploadImage(file);
+      clearInterval(simulateProgress);
+      imageUploadProgress = 100;
 
-    // Получаем URL изображения с сервера
-    const imageUrl = response.image.url_path;
+      // Получаем URL изображения с сервера
+      const imageUrl = response.image.url_path;
 
-    // Добавляем в список загруженных изображений
-    uploadedImages = [...uploadedImages, {
-      name: file.filename || file.name,
-      url: imageUrl,
-      size: formatFileSize(file.size),
-      id: response.image.id
-    }];
+      // Добавляем в список загруженных изображений
+      uploadedImages = [...uploadedImages, {
+        name: file.filename || file.name,
+        url: imageUrl,
+        size: formatFileSize(file.size),
+        id: response.image.id
+      }];
 
-    // Вставляем URL в markdown
-    const insertion = `![${file.name}](${imageUrl})`;
-    // ...код для вставки в текстовую область...
-
-    // Сбрасываем индикатор прогресса
-    setTimeout(() => {
+      // Сбрасываем индикатор прогресса
+      setTimeout(() => {
+        imageUploadProgress = null;
+      }, 500);
+    } catch (err) {
+      error = "Ошибка загрузки изображения: " + err.message;
       imageUploadProgress = null;
-    }, 500);
-  } catch (err) {
-    error = "Ошибка загрузки изображения: " + err.message;
-    imageUploadProgress = null;
+    }
   }
-}
 
   function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' bytes';
@@ -198,6 +204,7 @@ async function handleFileSelect(event) {
   }
 </script>
 
+<!-- Rest of the component's HTML and style remains the same -->
 <div class="create-post">
   <div class="form-container">
     <h1>Создание нового поста</h1>
@@ -245,6 +252,7 @@ async function handleFileSelect(event) {
               <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
           </button>
+
           <button type="button" on:click={() => insertMarkdown('code')} title="Код">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="16 18 22 12 16 6"></polyline>
@@ -305,7 +313,6 @@ async function handleFileSelect(event) {
               style="display: none;"
             />
           </div>
-
           <button type="button" class="preview-toggle" on:click={togglePreview}>
             {previewMode ? 'Редактировать' : 'Предпросмотр'}
           </button>

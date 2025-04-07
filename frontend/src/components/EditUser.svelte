@@ -1,7 +1,7 @@
 <!-- EditUser.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { api } from "../stores/userStore";
+  import { api } from "../stores/apiService";
 
   export let userId;
   export let username;

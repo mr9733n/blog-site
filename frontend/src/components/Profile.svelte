@@ -1,7 +1,9 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore, tokenExpiration } from "../stores/userStore";
+  import { userStore, tokenExpiration } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { checkAuth, isAdmin } from "../utils/authWrapper";
   import UserSettings from './UserSettings.svelte';
   import AdminUsers from './AdminUsers.svelte';
 
@@ -22,11 +24,8 @@
   });
 
   onMount(async () => {
-    // Проверка авторизации
-    if (!user) {
-      navigate("/login", { replace: true });
-      return;
-    }
+    // Check authentication first (triggers token refresh if needed)
+    if (!(await checkAuth())) return;
 
     loading = true;
 
@@ -45,6 +44,7 @@
 
     } catch (err) {
       error = err.message;
+    } finally {
       loading = false;
     }
   });
@@ -122,21 +122,18 @@
     else return (bytes / 1048576).toFixed(1) + ' MB';
   }
 
-	function isAdmin(userId) {
-	  return userId === '1';
-	}
 
 function setTab(tab) {
   activeTab = tab;
 
   // Load admin data when needed
-  if (tab === 'admin' && isAdmin(user.id) && allPosts.length === 0) {
+  if (tab === 'admin' && isAdmin(user) && allPosts.length === 0) {
     loadAllPosts();
   }
 }
 
 async function loadAllPosts() {
-  if (!isAdmin(user.id)) return;
+  if (!isAdmin(user)) return;
 
   loadingAllPosts = true;
   try {
@@ -191,7 +188,7 @@ async function deletePost(postId) {
           </div>
 		 <div class="profile-details">
 		  <h2>{userInfo.username}</h2>
-		  {#if isAdmin(userInfo.id)}
+		  {#if isAdmin(user)}
 			<div class="admin-badge">Администратор</div>
 		  {/if}
 		  <p class="profile-email">{userInfo.email}</p>
@@ -230,7 +227,7 @@ async function deletePost(postId) {
 		  </button>
 
 		  <!-- Show admin tab only for user with ID 1 -->
-		  {#if isAdmin(user.id)}
+		  {#if isAdmin(user)}
 			<button
 			  class="tab admin-tab {activeTab === 'admin' ? 'active' : ''}"
 			  on:click={() => setTab('admin')}

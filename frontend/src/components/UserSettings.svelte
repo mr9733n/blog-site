@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { api, userStore } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
 
   let tokenLifetimeMinutes = 30; // 30 минут по умолчанию
   let refreshTokenLifetimeDays = 15; // 15 дней по умолчанию

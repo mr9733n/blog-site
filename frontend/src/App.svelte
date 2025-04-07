@@ -11,34 +11,67 @@
   import EditPost from "./components/EditPost.svelte";
   import Profile from "./components/Profile.svelte";
   import AuthGuard from "./components/AuthGuard.svelte";
-  import { userStore, updateUserActivity, logout } from './stores/userStore';
+  import { updateUserActivity, userStore } from './stores/userStore';
+  import { checkTokenExpiration, logout } from './stores/authService';
+  import { isAdmin } from "./utils/authWrapper";
   import { onMount } from "svelte";
 
   export let url = "";
   let user;
   let menuOpen = false;
+  let darkMode = false;
 
   userStore.subscribe(value => {
     user = value;
   });
 
-  // Обновляем активность при загрузке приложения
-  onMount(() => {
-    updateUserActivity();
+  function toggleDarkMode() {
+    darkMode = !darkMode;
+    document.body.classList.toggle('dark-mode', darkMode);
+  }
 
-    // Отслеживаем навигацию браузера (кнопки назад/вперед)
-    window.addEventListener('popstate', updateUserActivity);
+  // Update activity on app load
+onMount(() => {
+  // Add event listeners for activity tracking
+  window.addEventListener('click', updateUserActivity);
+  window.addEventListener('keypress', updateUserActivity);
+  window.addEventListener('touchstart', updateUserActivity);
 
-    // Отслеживаем когда пользователь возвращается на вкладку
-    window.addEventListener('focus', updateUserActivity);
+  // Prevent auth check loops by using sessionStorage flag
+  const isAuthCheck = sessionStorage.getItem('auth_check_in_progress');
 
-    return () => {
-      window.removeEventListener('popstate', updateUserActivity);
-      window.removeEventListener('focus', updateUserActivity);
-    };
-  });
+  if (!isAuthCheck) {
+    // Set flag to prevent multiple simultaneous checks
+    sessionStorage.setItem('auth_check_in_progress', 'true');
 
-  // Обработчик для клика по ссылкам
+    console.log("App.svelte: Checking token expiration");
+
+    // Check token on mount (only once)
+    const tokenValid = checkTokenExpiration();
+
+    if (!tokenValid) {
+      console.log("App.svelte: Token invalid, logging out");
+      logout();
+      // Note: Don't navigate here - let the router handle it
+    }
+
+    // Clear auth check flag
+    setTimeout(() => {
+      sessionStorage.removeItem('auth_check_in_progress');
+    }, 1000);
+  } else {
+    console.log("App.svelte: Auth check already in progress, skipping");
+  }
+
+  // Initialize dark mode from preferences if available
+  const savedDarkMode = localStorage.getItem('darkMode');
+  if (savedDarkMode) {
+    darkMode = savedDarkMode === 'true';
+    document.body.classList.toggle('dark-mode', darkMode);
+  }
+});
+
+  // Handle link clicks
   function handleLinkClick() {
     updateUserActivity();
     if (menuOpen) toggleMenu();
@@ -56,13 +89,13 @@
 
 <Router {url}>
   <TokenRefreshIndicator />
-  <ImageViewer /> <!-- Добавляем компонент просмотра изображений -->
+  <ImageViewer />
 
   <nav>
     <div class="container nav-container">
       <div class="nav-left">
         <div class="brand">
-          <Link to="/" on:click={handleLinkClick}>Мой Блог</Link>
+          <Link to="/" on:click={handleLinkClick}>My Blog</Link>
         </div>
       </div>
 
@@ -72,47 +105,35 @@
 
       <div class="nav-right">
         <ul class="nav-links {menuOpen ? 'open' : ''}">
-          <li><Link to="/" on:click={handleLinkClick}>Главная</Link></li>
+          <li><Link to="/" on:click={handleLinkClick}>Home</Link></li>
           {#if user}
-            <li><Link to="/create" on:click={handleLinkClick}>Новый пост</Link></li>
-            <li><Link to="/profile" on:click={handleLinkClick}>Профиль</Link></li>
-            <li><button on:click={() => { handleLogout(); handleLinkClick(); }}>Выйти</button></li>
+            <li><Link to="/create" on:click={handleLinkClick}>New Post</Link></li>
+            <li><Link to="/profile" on:click={handleLinkClick}>Profile</Link></li>
+            <li><button on:click={() => { handleLogout(); handleLinkClick(); }}>Logout</button></li>
           {:else}
-            <li><Link to="/login" on:click={handleLinkClick}>Войти</Link></li>
-           <!-- TODO: Removed cuz unnecessary, signup can be provided from login page
-            <li><Link to="/register" on:click={handleLinkClick}>Регистрация</Link></li>
-           -->
+            <li><Link to="/login" on:click={handleLinkClick}>Login</Link></li>
           {/if}
         </ul>
-        <ThemeToggle />
+        <ThemeToggle on:toggle={toggleDarkMode} />
       </div>
     </div>
   </nav>
 
   <main>
     <div class="container">
-      <!-- Публичные маршруты - доступны всем -->
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
-      <Route path="/post/:id" let:params>
-        <BlogPost id={params.id} />
-      </Route>
-
-      <!-- Защищенные маршруты - только для авторизованных пользователей -->
-      <AuthGuard>
-        <Route path="/create" component={CreatePost} />
-        <Route path="/edit/:id" let:params>
-          <EditPost id={params.id} />
-        </Route>
-        <Route path="/profile" component={Profile} />
-      </AuthGuard>
+      <Route path="/post/:id" component={BlogPost} />
+      <Route path="/profile" component={AuthGuard} childComponent={Profile} />
+      <Route path="/create" component={AuthGuard} childComponent={CreatePost} />
+      <Route path="/edit/:id" component={AuthGuard} childComponent={EditPost} />
     </div>
   </main>
 
   <footer>
     <div class="container">
-      <p>&copy; 2025 Мой Блог. Все права защищены.</p>
+      <p>&copy; 2025 My Blog. All rights reserved.</p>
     </div>
   </footer>
 </Router>
@@ -239,4 +260,4 @@
       gap: 1rem;
     }
   }
-</style>
+  </style>

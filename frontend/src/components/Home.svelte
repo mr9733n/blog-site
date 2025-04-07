@@ -1,22 +1,44 @@
 <script>
   import { onMount } from "svelte";
   import { Link } from "svelte-routing";
-  import { api } from "../stores/userStore";
+  import { api } from "../stores/apiService";
   import { renderMarkdown } from "../utils/markdown";
 
   let posts = [];
   let loading = true;
   let error = null;
+  let mountCount = 0;
+  let isLoading = true;
+  let hasFetchedPosts = false;
 
-  onMount(async () => {
-    try {
-      posts = await api.getPosts();
-      loading = false;
-    } catch (err) {
-      error = err.message;
-      loading = false;
-    }
-  });
+onMount(() => {
+  mountCount++;
+  console.log(`Home component mounted ${mountCount} times`);
+
+  if (!hasFetchedPosts) {
+    hasFetchedPosts = true;
+    fetchPosts();
+  } else {
+    console.log("Posts already fetched, skipping redundant fetch");
+  }
+
+  // Return a cleanup function
+  return () => {
+    console.log("Home component unmounted");
+  };
+});
+
+async function fetchPosts() {
+  console.log("fetchPosts called at", new Date().toISOString());
+  try {
+    posts = await api.getPosts();
+    console.log(`Received ${posts.length} posts`);
+    loading = false;
+  } catch (err) {
+    error = err.message;
+    loading = false;
+  }
+}
 
   // Функция для форматирования даты
   function formatDate(dateString) {

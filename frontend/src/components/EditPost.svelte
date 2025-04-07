@@ -1,10 +1,13 @@
 <script>
   import { onMount } from "svelte";
   import { navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { authFetch } from "../stores/authService";
+  import { canEdit } from "../utils/authWrapper";
   import { renderMarkdown } from "../utils/markdown";
 
-  export let id; // ID поста из параметра маршрута
+  export let id; // Post ID from route parameter
 
   let title = "";
   let content = "";
@@ -21,43 +24,42 @@
     user = value;
   });
 
-	onMount(async () => {
-	  // Проверка авторизации
-	  if (!user) {
-		navigate("/login", { replace: true });
-		return;
-	  }
+  onMount(async () => {
+    loading = true;
 
-	  loading = true;
+    try {
+      // Try to verify authentication (will trigger token refresh if needed)
+      await authFetch('/api/me');
 
-	  try {
-		// Загрузка информации о посте
-		post = await api.getPost(id);
+      if (!user) {
+        navigate("/login", { replace: true });
+        return;
+      }
 
-		// Check if user is admin (ID = 1)
-		const isAdmin = user.id === '1';
+      // Load the post information
+      post = await api.getPost(id);
 
-		// Проверка прав на редактирование (now supports admin)
-		if (!isAdmin && post.author_id !== parseInt(user.id)) {
-		  navigate(`/post/${id}`, { replace: true });
-		  return;
-		}
+      // Check if user has edit permissions
+      if (!canEdit(user, post.author_id)) {
+        navigate(`/post/${id}`, { replace: true });
+        return;
+      }
 
-		// Заполнение полей формы
-		title = post.title;
-		content = post.content;
-		loading = false;
-	  } catch (err) {
-		error = err.message;
-		loading = false;
-	  }
-	});
+      // Fill form with post data
+      title = post.title;
+      content = post.content;
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  });
 
   async function handleSubmit() {
     error = "";
     loading = true;
 
-    // Валидация формы
+    // Form validation
     if (!title.trim()) {
       error = "Заголовок не может быть пустым";
       loading = false;
@@ -79,6 +81,7 @@
     }
   }
 
+  // Rest of the component methods remain unchanged
   function togglePreview() {
     previewMode = !previewMode;
     if (previewMode) {
@@ -113,11 +116,11 @@
       case 'link':
         insertion = `[${selectedText || 'текст ссылки'}](http://example.com)`;
         break;
-    case 'image':
+      case 'image':
         if (uploadedImages.length > 0) {
             // Use the most recently uploaded image
             const lastImage = uploadedImages[uploadedImages.length - 1];
-            // Вместо обертывания изображения в ссылку, просто вставляем само изображение
+            // Insert image markdown
             insertion = `![${selectedText || lastImage.name}](${lastImage.url})`;
         } else {
             // No uploaded images, show error message
@@ -158,62 +161,58 @@
   }
 
   // Function to handle file selection
-async function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+  async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-  // Проверка типа файла
-  if (!file.type.startsWith('image/')) {
-    error = "Выбранный файл не является изображением";
-    return;
-  }
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      error = "Выбранный файл не является изображением";
+      return;
+    }
 
-  // Проверка размера файла
-  if (file.size > 5 * 1024 * 1024) {
-    error = "Размер файла не должен превышать 5MB";
-    return;
-  }
+    // Validate file size
+    if (file.size > 5 * 1024 * 1024) {
+      error = "Размер файла не должен превышать 5MB";
+      return;
+    }
 
-  // Очистка ошибок и показ индикатора загрузки
-  error = "";
-  imageUploadProgress = 0;
+    // Reset errors and show loading indicator
+    error = "";
+    imageUploadProgress = 0;
 
-  try {
-    // Вместо создания локального blob-URL, загружаем файл на сервер
-    const simulateProgress = setInterval(() => {
-      imageUploadProgress += 10;
-      if (imageUploadProgress >= 90) clearInterval(simulateProgress);
-    }, 100);
+    try {
+      // Simulate progress
+      const simulateProgress = setInterval(() => {
+        imageUploadProgress += 10;
+        if (imageUploadProgress >= 90) clearInterval(simulateProgress);
+      }, 100);
 
-    // Загрузка файла на сервер через API
-    const response = await api.uploadImage(file);
-    clearInterval(simulateProgress);
-    imageUploadProgress = 100;
+      // Upload file via API
+      const response = await api.uploadImage(file);
+      clearInterval(simulateProgress);
+      imageUploadProgress = 100;
 
-    // Получаем URL изображения с сервера
-    const imageUrl = response.image.url_path;
+      // Get image URL from server
+      const imageUrl = response.image.url_path;
 
-    // Добавляем в список загруженных изображений
-    uploadedImages = [...uploadedImages, {
-      name: file.filename || file.name,
-      url: imageUrl,
-      size: formatFileSize(file.size),
-      id: response.image.id
-    }];
+      // Add to uploaded images list
+      uploadedImages = [...uploadedImages, {
+        name: file.filename || file.name,
+        url: imageUrl,
+        size: formatFileSize(file.size),
+        id: response.image.id
+      }];
 
-    // Вставляем URL в markdown
-    const insertion = `![${file.name}](${imageUrl})`;
-    // ...код для вставки в текстовую область...
-
-    // Сбрасываем индикатор прогресса
-    setTimeout(() => {
+      // Reset progress indicator
+      setTimeout(() => {
+        imageUploadProgress = null;
+      }, 500);
+    } catch (err) {
+      error = "Ошибка загрузки изображения: " + err.message;
       imageUploadProgress = null;
-    }, 500);
-  } catch (err) {
-    error = "Ошибка загрузки изображения: " + err.message;
-    imageUploadProgress = null;
+    }
   }
-}
 
   function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' bytes';
