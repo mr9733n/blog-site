@@ -12,7 +12,7 @@
   import Profile from "./components/Profile.svelte";
   import AuthGuard from "./components/AuthGuard.svelte";
   import { updateUserActivity, userStore } from './stores/userStore';
-  import { checkTokenExpiration, logout } from './stores/authService';
+  import { isAuthenticated, logout } from './stores/authService';
   import { isAdmin } from "./utils/authWrapper";
   import { onMount } from "svelte";
 
@@ -20,6 +20,7 @@
   let user;
   let menuOpen = false;
   let darkMode = false;
+  let authChecking = false;
 
   userStore.subscribe(value => {
     user = value;
@@ -28,42 +29,41 @@
   function toggleDarkMode() {
     darkMode = !darkMode;
     document.body.classList.toggle('dark-mode', darkMode);
+    localStorage.setItem('darkMode', darkMode);
   }
 
-  // Update activity on app load
-onMount(() => {
-  // Add event listeners for activity tracking
+  // Initial auth check on app load
+onMount(async () => {
+  // We'll keep activity listeners here as they're scoped to the app component
+  // Activity events might not bubble up to window if captured
   window.addEventListener('click', updateUserActivity);
   window.addEventListener('keypress', updateUserActivity);
   window.addEventListener('touchstart', updateUserActivity);
 
-  // Prevent auth check loops by using sessionStorage flag
-  const isAuthCheck = sessionStorage.getItem('auth_check_in_progress');
+  // Add scroll event for better activity tracking
+  window.addEventListener('scroll', updateUserActivity);
 
-  if (!isAuthCheck) {
-    // Set flag to prevent multiple simultaneous checks
-    sessionStorage.setItem('auth_check_in_progress', 'true');
+  // Prevent auth check loops
+  if (authChecking) return;
 
-    console.log("App.svelte: Checking token expiration");
+  try {
+    authChecking = true;
+    console.log("App.svelte: Checking authentication");
 
-    // Check token on mount (only once)
-    const tokenValid = checkTokenExpiration();
+    // Check authentication status
+    const authenticated = await isAuthenticated();
 
-    if (!tokenValid) {
-      console.log("App.svelte: Token invalid, logging out");
+    if (!authenticated && user) {
+      console.log("App.svelte: Not authenticated, logging out");
       logout();
-      // Note: Don't navigate here - let the router handle it
     }
-
-    // Clear auth check flag
-    setTimeout(() => {
-      sessionStorage.removeItem('auth_check_in_progress');
-    }, 1000);
-  } else {
-    console.log("App.svelte: Auth check already in progress, skipping");
+  } catch (err) {
+    console.error("Auth check error:", err);
+  } finally {
+    authChecking = false;
   }
 
-  // Initialize dark mode from preferences if available
+  // Initialize dark mode from preferences
   const savedDarkMode = localStorage.getItem('darkMode');
   if (savedDarkMode) {
     darkMode = savedDarkMode === 'true';
@@ -77,8 +77,8 @@ onMount(() => {
     if (menuOpen) toggleMenu();
   }
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     navigate("/", { replace: true });
   }
 
@@ -124,10 +124,18 @@ onMount(() => {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
-      <Route path="/post/:id" component={BlogPost} />
-      <Route path="/profile" component={AuthGuard} childComponent={Profile} />
-      <Route path="/create" component={AuthGuard} childComponent={CreatePost} />
-      <Route path="/edit/:id" component={AuthGuard} childComponent={EditPost} />
+      <Route path="/post/:id" let:params>
+        <BlogPost id={params.id} />
+      </Route>
+      <Route path="/profile">
+        <AuthGuard childComponent={Profile} />
+      </Route>
+      <Route path="/create">
+        <AuthGuard childComponent={CreatePost} />
+      </Route>
+      <Route path="/edit/:id" let:params>
+        <AuthGuard id={params.id} childComponent={EditPost} />
+      </Route>
     </div>
   </main>
 

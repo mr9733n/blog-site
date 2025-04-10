@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from backend.models.base import get_db, query_db, commit_db
 
@@ -23,7 +23,7 @@ class SavedPost:
             return False
 
         db = get_db()
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         db.execute(
             'INSERT INTO saved_posts (user_id, post_id, saved_at) VALUES (?, ?, ?)',
             [user_id, post_id, now]

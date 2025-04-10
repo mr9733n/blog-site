@@ -72,8 +72,9 @@ export const api = {
       // Create a new promise and store it
       pendingPostsRequest = (async () => {
         try {
-          const response = await fetch(url);
-
+		const response = await fetch(url, {
+		  credentials: 'include'  // Add this to all fetch requests
+		});
           if (!response.ok) {
             throw new Error('Error loading posts');
           }
@@ -100,9 +101,11 @@ export const api = {
     }
   }),
   // Get a single post
-  getPost: debugApiCall('posts/:id', async function(id) {
+  getPost: debugApiCall('/posts/:id', async function(id) {
     try {
-      const response = await fetch(`${API_URL}/posts/${id}`);
+      const response = await fetch(`${API_URL}/posts/${id}`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Post not found');
@@ -118,7 +121,9 @@ export const api = {
   // Get user's posts
   getUserPosts: debugApiCall('/users/:id/posts', async function(userId) {
     try {
-      const response = await fetch(`${API_URL}/users/${userId}/posts`);
+      const response = await fetch(`${API_URL}/users/${userId}/posts`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Error loading user posts');
@@ -134,7 +139,9 @@ export const api = {
   // Get current user info
   getCurrentUser: debugApiCall('/me', async function() {
     try {
-      const response = await authFetch(`${API_URL}/me`);
+      const response = await authFetch(`${API_URL}/me`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Error loading user information');
@@ -152,7 +159,9 @@ export const api = {
   // Get post comments
   getPostComments: debugApiCall('/posts/:id/comments', async function(postId) {
     try {
-      const response = await fetch(`${API_URL}/posts/${postId}/comments`);
+      const response = await fetch(`${API_URL}/posts/${postId}/comments`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Error loading comments');
@@ -168,7 +177,9 @@ export const api = {
   // Get saved posts
   getSavedPosts: debugApiCall('/saved/posts', async function() {
     try {
-      const response = await authFetch(`${API_URL}/saved/posts`);
+      const response = await authFetch(`${API_URL}/saved/posts`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Error loading saved posts');
@@ -184,7 +195,9 @@ export const api = {
   // Check if post is saved
   isPostSaved: debugApiCall('/posts/:postId/is_saved', async function(postId) {
     try {
-      const response = await authFetch(`${API_URL}/posts/${postId}/is_saved`);
+      const response = await authFetch(`${API_URL}/posts/${postId}/is_saved`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Error checking if post is saved');
@@ -201,7 +214,9 @@ export const api = {
   // Get post images
   getPostImages: debugApiCall('/posts/:postId/images', async function(postId) {
     try {
-      const response = await fetch(`${API_URL}/posts/${postId}/images`);
+      const response = await fetch(`${API_URL}/posts/${postId}/images`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         throw new Error('Error getting images');
@@ -215,33 +230,42 @@ export const api = {
   }),
 
   // Get user images
-  getUserImages: debugApiCall('/users/:userId/images', async function(userId, limit = null) {
-    try {
-      let url = `${API_URL}/users/${userId}/images`;
+getUserImages: debugApiCall('/users/:userId/images', async function(userId, limit = null) {
+  try {
+    let url = `${API_URL}/users/${userId}/images`;
 
-      if (limit) {
-        url += `?limit=${limit}`;
-      }
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error('Error getting user images');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching user images:', error);
-      return [];
+    // Правильное формирование URL с параметрами запроса
+    if (limit) {
+      url += `?limit=${limit}`;
     }
-  }),
+
+    console.log('Fetching user images from URL:', url);
+
+    const response = await fetch(url, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response from server:', errorText);
+      throw new Error('Error getting user images');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching user images:', error);
+    return [];
+  }
+}),
 
   // Admin functions
 
   // Get all users (admin only)
   getAllUsers: debugApiCall('/admin/users', async function() {
     try {
-      const response = await authFetch(`${API_URL}/admin/users`);
+      const response = await authFetch(`${API_URL}/admin/users`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         if (response.status === 403) {
@@ -260,7 +284,9 @@ export const api = {
   // Get user details (admin only)
   getUserDetails: debugApiCall('/admin/users/:userId', async function(userId) {
     try {
-      const response = await authFetch(`${API_URL}/admin/users/${userId}`);
+      const response = await authFetch(`${API_URL}/admin/users/${userId}`, {
+      credentials: 'include'  // Add this
+    });
 
       if (!response.ok) {
         if (response.status === 403) {
@@ -290,6 +316,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ title, content })
       });
 
@@ -313,6 +340,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ title, content })
       });
 
@@ -332,7 +360,8 @@ export const api = {
   deletePost: debugApiCall('/posts/:id', async function(id) {
     try {
       const response = await authFetch(`${API_URL}/posts/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -357,6 +386,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ content })
       });
 
@@ -380,6 +410,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ content })
       });
 
@@ -399,7 +430,8 @@ export const api = {
   deleteComment: debugApiCall('/comments/:commentId', async function(commentId) {
     try {
       const response = await authFetch(`${API_URL}/comments/${commentId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -415,45 +447,43 @@ export const api = {
   }),
 
   // Token settings
-  updateTokenSettings: debugApiCall('/settings/token-settings', async function(tokenLifetime, refreshTokenLifetime) {
-    try {
-      const response = await authFetch(`${API_URL}/settings/token-settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          token_lifetime: tokenLifetime,
-          refresh_token_lifetime: refreshTokenLifetime
-        })
-      });
+updateTokenSettings: debugApiCall('/settings/token-settings', async function(tokenLifetime, refreshTokenLifetime) {
+  try {
+    console.log('Updating token settings:', { tokenLifetime, refreshTokenLifetime });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.msg || 'Error updating settings');
-      }
+    const response = await authFetch(`${API_URL}/settings/token-settings`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        token_lifetime: tokenLifetime,
+        refresh_token_lifetime: refreshTokenLifetime
+      })
+    });
 
-      const result = await response.json();
-
-      // Save new tokens
-      if (result.access_token) {
-        localStorage.setItem('authToken', result.access_token);
-        localStorage.setItem('refreshToken', result.refresh_token);
-        console.log('Tokens updated with new lifetime settings');
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Error updating token settings:', error);
-      throw error;
+    if (!response.ok) {
+      console.error('Failed to update token settings, status:', response.status);
+      const error = await response.json();
+      throw new Error(error.msg || 'Error updating settings');
     }
-  }),
+
+    const data = await response.json();
+    console.log('Token settings updated successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Error updating token settings:', error);
+    throw error;
+  }
+}),
 
   // Post saving
   savePost: debugApiCall('/posts/:postId/save', async function(postId) {
     try {
       const response = await authFetch(`${API_URL}/posts/${postId}/save`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -471,7 +501,8 @@ export const api = {
   unsavePost: debugApiCall('/posts/:postId/unsave', async function(postId) {
     try {
       const response = await authFetch(`${API_URL}/posts/${postId}/unsave`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -498,6 +529,7 @@ export const api = {
 
       const response = await authFetch(`${API_URL}/images/upload`, {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 
@@ -530,7 +562,8 @@ export const api = {
   deleteImage: debugApiCall('/images/:imageId', async function(imageId) {
     try {
       const response = await authFetch(`${API_URL}/images/${imageId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -548,7 +581,8 @@ export const api = {
   attachImageToPost: debugApiCall('/images/:imageId/post/:postId', async function(imageId, postId) {
     try {
       const response = await authFetch(`${API_URL}/images/${imageId}/post/${postId}`, {
-        method: 'PUT'
+        method: 'PUT',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -566,7 +600,8 @@ export const api = {
   detachImageFromPost: debugApiCall('/images/:imageId/post', async function(imageId) {
     try {
       const response = await authFetch(`${API_URL}/images/${imageId}/post`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -589,6 +624,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ blocked: blockStatus })
       });
 
@@ -614,6 +650,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify(userData)
       });
 

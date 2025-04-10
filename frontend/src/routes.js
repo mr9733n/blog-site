@@ -44,8 +44,9 @@ export const routes = [
   {
     path: `${ROUTES.EDIT_POST}/:id`,
     component: AuthGuard,
-    props: {
-      childComponent: EditPost
-    }
+    props: (route) => ({
+      childComponent: EditPost,
+      id: route.params.id
+    })
   }
 ];

@@ -28,6 +28,11 @@
     loading = true;
 
     try {
+      if (!id) {
+        error = "ID поста не указан";
+        loading = false;
+        return;
+      }
       // Try to verify authentication (will trigger token refresh if needed)
       await authFetch('/api/me');
 
@@ -161,50 +166,56 @@
   }
 
   // Function to handle file selection
-  async function handleFileSelect(event) {
+async function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Validate file type
+    // Проверка типа файла
     if (!file.type.startsWith('image/')) {
       error = "Выбранный файл не является изображением";
       return;
     }
 
-    // Validate file size
+    // Проверка размера файла
     if (file.size > 5 * 1024 * 1024) {
       error = "Размер файла не должен превышать 5MB";
       return;
     }
 
-    // Reset errors and show loading indicator
+    // Очистка ошибок и показ индикатора загрузки
     error = "";
     imageUploadProgress = 0;
 
     try {
-      // Simulate progress
+      // Имитация прогресса загрузки
       const simulateProgress = setInterval(() => {
         imageUploadProgress += 10;
         if (imageUploadProgress >= 90) clearInterval(simulateProgress);
       }, 100);
 
-      // Upload file via API
+      // Загрузка файла на сервер через API
       const response = await api.uploadImage(file);
       clearInterval(simulateProgress);
       imageUploadProgress = 100;
 
-      // Get image URL from server
+      // Получаем URL изображения с сервера
       const imageUrl = response.image.url_path;
+      const imageId = response.image.id;
 
-      // Add to uploaded images list
+      // Добавляем в список загруженных изображений
       uploadedImages = [...uploadedImages, {
         name: file.filename || file.name,
         url: imageUrl,
         size: formatFileSize(file.size),
-        id: response.image.id
+        id: imageId
       }];
 
-      // Reset progress indicator
+      // Привязываем изображение к редактируемому посту
+      if (id && imageId) {
+        await api.attachImageToPost(imageId, id);
+      }
+
+      // Сбрасываем индикатор прогресса
       setTimeout(() => {
         imageUploadProgress = null;
       }, 500);
@@ -212,7 +223,7 @@
       error = "Ошибка загрузки изображения: " + err.message;
       imageUploadProgress = null;
     }
-  }
+}
 
   function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' bytes';

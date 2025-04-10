@@ -1,6 +1,6 @@
 import sqlite3
 
-from datetime import datetime
+from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import current_app
 
@@ -10,6 +10,7 @@ from backend.models.base import get_db, query_db, commit_db
 class User:
     """Модель пользователя"""
 
+    @staticmethod
     def is_admin(user_id):
         """Check if a user has admin privileges"""
         # Simple check - user with ID 1 is admin
@@ -17,8 +18,14 @@ class User:
 
     @staticmethod
     def get_by_id(user_id):
-        """Получить пользователя по ID"""
-        return query_db('SELECT * FROM users WHERE id = ?', [user_id], one=True)
+        """Получить пользователя по ID
+
+        Returns:
+            dict: User data as dictionary or None if not found
+        """
+        user = query_db('SELECT * FROM users WHERE id = ?', [user_id], one=True)
+        # Convert sqlite3.Row to dict to make it more consistent
+        return dict(user) if user else None
 
     @staticmethod
     def get_by_username(username):
@@ -41,7 +48,7 @@ class User:
         db = get_db()
         db.execute(
             'INSERT INTO users (username, password, email, created_at) VALUES (?, ?, ?, ?)',
-            [username, password_hash, email, datetime.now().isoformat()]
+            [username, password_hash, email, datetime.now(timezone.utc).isoformat()]
         )
         commit_db()
         return User.get_by_username(username)
@@ -184,7 +191,7 @@ class User:
         # Теперь работаем с таблицей
         if blocked_status:
             # Блокируем пользователя
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             db.execute('''
                 INSERT INTO user_status (user_id, is_blocked, blocked_at) 
                 VALUES (?, 1, ?) 

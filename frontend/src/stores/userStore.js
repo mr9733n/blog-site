@@ -8,82 +8,8 @@ let lastUserActivity = Date.now();
 // Loading state for token refresh operations
 export const tokenRefreshLoading = writable(false);
 
-// Check for token in localStorage during initialization
-const storedToken = typeof localStorage !== 'undefined' ? localStorage.getItem('authToken') : null;
-let initialUser = null;
-
-// Helper function to validate token and extract user info
-export function isTokenExpired(token, bufferSeconds = 0) {
-  if (!token) return true;
-
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(window.atob(base64));
-
-    // Check with buffer for preemptive renewal
-    return payload.exp * 1000 <= Date.now() + (bufferSeconds * 1000);
-  } catch (e) {
-    console.error('Error checking token expiration', e);
-    return true;
-  }
-}
-
-// Initialize user from stored token if valid
-if (storedToken) {
-  if (!isTokenExpired(storedToken)) {
-    try {
-      const base64Url = storedToken.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      initialUser = { id: payload.sub };
-    } catch (e) {
-      console.error('Error reading token', e);
-      if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('authToken');
-      }
-    }
-  } else {
-    // Token expired, remove it
-    console.log('Token expired, removing');
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('authToken');
-    }
-  }
-}
-
-// Create store with initial value
-export const userStore = writable(initialUser);
-
-// Derived store for token expiration countdown
-export const tokenExpiration = derived(
-  userStore,
-  ($userStore, set) => {
-    const checkExpiration = () => {
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('authToken') : null;
-      if (!token) return set(0);
-
-      try {
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const payload = JSON.parse(window.atob(base64));
-        set(Math.max(0, Math.floor(payload.exp - Date.now()/1000)));
-      } catch (e) {
-        console.error('Error checking token', e);
-        set(0);
-      }
-    };
-
-    // Initial check
-    checkExpiration();
-
-    // Setup interval
-    const interval = setInterval(checkExpiration, 1000);
-
-    // Cleanup on unsubscribe
-    return () => clearInterval(interval);
-  }
-);
+// Initial user state (null until auth check)
+export const userStore = writable(null);
 
 // User activity tracking
 export function updateUserActivity() {
@@ -94,3 +20,50 @@ export function updateUserActivity() {
 export function getLastUserActivity() {
   return lastUserActivity;
 }
+
+// Helper function to get token lifetime from cookie
+function getTokenLifetime() {
+  // Read token_lifetime cookie (non-httpOnly)
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'token_lifetime') {
+      return parseInt(value, 10);
+    }
+  }
+  return 1800; // Default to 30 minutes if cookie not found
+}
+
+// Derived store for token expiration countdown
+export const tokenExpiration = derived(
+  userStore,
+  ($userStore, set) => {
+    // Get initial token lifetime
+    let remainingSeconds = getTokenLifetime();
+
+    const updateExpiration = () => {
+      if (!$userStore) {
+        set(0);
+        return;
+      }
+
+      if (remainingSeconds <= 0) {
+        set(0);
+        return;
+      }
+
+      // Decrement by 1 second
+      remainingSeconds--;
+      set(remainingSeconds);
+    };
+
+    // Initial update
+    updateExpiration();
+
+    // Setup interval to update countdown every second
+    const interval = setInterval(updateExpiration, 1000);
+
+    // Cleanup on unsubscribe
+    return () => clearInterval(interval);
+  }
+);

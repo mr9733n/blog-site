@@ -6,6 +6,7 @@
   import { checkAuth, isAdmin } from "../utils/authWrapper";
   import UserSettings from './UserSettings.svelte';
   import AdminUsers from './AdminUsers.svelte';
+  import DebugHelper from './DebugHelper.svelte';
 
   let user = null;
   let userInfo = null;
@@ -401,7 +402,7 @@ async function deletePost(postId) {
     </div>
   {/if}
 </div>
-
+<DebugHelper />
 <style>
 .admin-badge {
   display: inline-block;

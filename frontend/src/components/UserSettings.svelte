@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { userStore } from "../stores/userStore";
   import { api } from "../stores/apiService";
+  import { API_URL } from "../config"; // Add this import
 
   let tokenLifetimeMinutes = 30; // 30 минут по умолчанию
   let refreshTokenLifetimeDays = 15; // 15 дней по умолчанию
@@ -21,53 +22,107 @@
       // Преобразуем секунды в минуты
       tokenLifetimeMinutes = Math.round(parseInt(storedTokenLifetime) / 60);
     }
-	const storedRefreshTokenLifetime = localStorage.getItem('refreshTokenLifetime');
-	if (storedRefreshTokenLifetime) {
-	  // Преобразуем секунды в дни
-	  refreshTokenLifetimeDays = Math.round(parseInt(storedRefreshTokenLifetime) / 86400);
-	}
+    const storedRefreshTokenLifetime = localStorage.getItem('refreshTokenLifetime');
+    if (storedRefreshTokenLifetime) {
+      // Преобразуем секунды в дни
+      refreshTokenLifetimeDays = Math.round(parseInt(storedRefreshTokenLifetime) / 86400);
+    }
     // В будущем можно также загружать из API, если мы сохраняем эти значения в БД
   });
 
+  // Display current auth status for debugging
+  async function checkAuthStatus() {
+    try {
+      // Get current cookies
+      const cookies = document.cookie.split(';')
+        .map(cookie => cookie.trim())
+        .reduce((acc, cookie) => {
+          const [name, value] = cookie.split('=');
+          acc[name] = value;
+          return acc;
+        }, {});
+
+      console.log('Current cookies:', cookies);
+
+      // Check if we're authenticated
+      const response = await fetch(`${API_URL}/me`, {
+        credentials: 'include'
+      });
+
+      console.log('Auth status check:', {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText
+      });
+
+      if (response.ok) {
+        try {
+          const userData = await response.json();
+          console.log('Current user data:', userData);
+        } catch (e) {
+          console.log('Could not parse user data');
+        }
+      }
+    } catch (err) {
+      console.error('Auth status check failed:', err);
+    }
+  }
+
   async function updateSettings() {
-    if (!user) return;
+    if (!user) {
+      error = "You need to be logged in to update settings";
+      return;
+    }
+
+    // Debug auth status before attempting update
+    try {
+      await checkAuthStatus();
+    } catch (e) {
+      console.error('Auth check failed:', e);
+    }
 
     loading = true;
     success = false;
     error = null;
 
     try {
-      // Валидация значений
+      // Validation
       if (tokenLifetimeMinutes < 5 || tokenLifetimeMinutes > 1440) {
-        throw new Error('Время жизни токена должно быть от 5 минут до 24 часов');
+        throw new Error('Token lifetime must be between 5 minutes and 24 hours');
       }
 
       if (refreshTokenLifetimeDays < 1 || refreshTokenLifetimeDays > 30) {
-        throw new Error('Время жизни refresh токена должно быть от 1 до 30 дней');
+        throw new Error('Refresh token lifetime must be between 1 and 30 days');
       }
 
-      // Преобразуем минуты и дни в секунды для API
+      // Convert to seconds
       const tokenLifetimeSeconds = tokenLifetimeMinutes * 60;
       const refreshTokenLifetimeSeconds = refreshTokenLifetimeDays * 86400;
 
-      // Отправка запроса на обновление настроек
+      console.log('Updating token settings with values:', {
+        tokenLifetimeSeconds,
+        refreshTokenLifetimeSeconds
+      });
+
+      // Send API request
       const response = await api.updateTokenSettings(
         tokenLifetimeSeconds,
         refreshTokenLifetimeSeconds
       );
 
-      success = true;
-
-      // Обновляем значение в локальном хранилище
+      // Update localStorage
       localStorage.setItem('tokenLifetime', tokenLifetimeSeconds.toString());
       localStorage.setItem('refreshTokenLifetime', refreshTokenLifetimeSeconds.toString());
 
+      success = true;
+      console.log('Settings updated successfully');
     } catch (err) {
+      console.error('Failed to update settings:', err);
       error = err.message;
     } finally {
       loading = false;
 
-      // Автоматически скрываем сообщение об успехе через 3 секунды
+      // Auto-hide success message after 3 seconds
       if (success) {
         setTimeout(() => {
           success = false;

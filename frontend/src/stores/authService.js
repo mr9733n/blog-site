@@ -1,66 +1,104 @@
 // src/stores/authService.js
 import { userStore, tokenRefreshLoading, getLastUserActivity, INACTIVITY_THRESHOLD } from './userStore';
 import { API_URL } from '../config';
+import { getCsrfTokenFromCookies, getAllCsrfTokens } from '../utils/csrfUtils';
 
 // Last token refresh timestamp to prevent too frequent refresh attempts
 let lastRefreshAttempt = 0;
+let csrfTokens = { access: null, refresh: null };
 const MIN_REFRESH_INTERVAL = 5000; // 5 seconds minimum between refresh attempts
 
+// Update CSRF tokens (called at login and refresh)
+export function updateCsrfTokens() {
+  csrfTokens = getAllCsrfTokens();
+  return csrfTokens;
+}
+
+// Get current CSRF token based on type
+export function getCsrfToken(type = 'access') {
+  if (!csrfTokens.access && !csrfTokens.refresh) {
+    updateCsrfTokens();
+  }
+
+  return type === 'refresh' ? csrfTokens.refresh : csrfTokens.access;
+}
+
 /**
- * Helper function for authenticated requests with auto token refresh
+ * Helper function for authenticated requests
+ * With cookie-based auth, we don't need to manually add tokens
+ *
  * @param {string} url - API URL to fetch
  * @param {Object} options - Fetch options
  * @returns {Promise<Response>} - Fetch response
  */
 export async function authFetch(url, options = {}) {
-  let token = localStorage.getItem('authToken');
-
-  if (!token) {
-    userStore.set(null);
-    throw new Error('Authentication required');
+  // Update CSRF tokens if not set
+  if (!csrfTokens.access && !csrfTokens.refresh) {
+    updateCsrfTokens();
   }
 
-  // Check if token is expired
-  if (isTokenExpired(token)) {
-    console.log('⏳ Access token expired. Attempting refresh...');
+  // Include credentials to ensure cookies are sent
+  const fetchOptions = {
+    ...options,
+    credentials: 'include'
+  };
 
-    // Check for user inactivity
-    const now = Date.now();
-    const lastUserActivity = getLastUserActivity();
-    const inactiveTime = now - lastUserActivity;
+  // Configure headers
+  fetchOptions.headers = {
+    ...fetchOptions.headers || {}
+  };
 
-    if (inactiveTime > INACTIVITY_THRESHOLD) {
-      console.warn(`⏳ Inactive for ${inactiveTime / 1000} seconds — logging out.`);
-      logout();
-      throw new Error('Session ended due to inactivity.');
+  // Add the appropriate CSRF token based on the endpoint
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)) {
+    // Use refresh token for refresh endpoint
+    if (url.endsWith('/refresh')) {
+      if (csrfTokens.refresh) {
+        fetchOptions.headers['X-CSRF-TOKEN'] = csrfTokens.refresh;
+      }
+    } else if (csrfTokens.access) {
+      // Use access token for all other endpoints
+      fetchOptions.headers['X-CSRF-TOKEN'] = csrfTokens.access;
     }
-
-    // Attempt to refresh token
-    const refreshSuccess = await refreshToken();
-    if (!refreshSuccess) {
-      console.warn('⚠️ Refresh failed. Logging out.');
-      logout();
-      throw new Error('Session expired. Please log in again.');
-    }
-
-    // Get new token after successful refresh
-    token = localStorage.getItem('authToken');
-  }
-
-  // Set up auth headers
-  if (!options.headers) {
-    options.headers = {};
   }
 
   try {
-    options.headers['Authorization'] = `Bearer ${token}`;
-    const response = await fetch(url, options);
+    // Try the fetch with current auth cookie
+    const response = await fetch(url, fetchOptions);
 
-    // Handle auth errors
-    if (response.status === 401 || response.status === 422) {
-      console.warn('⚠️ Authorization error after refresh attempt. Logging out.');
-      logout();
-      throw new Error('Session expired. Please log in again.');
+    // Update CSRF tokens if provided in response headers
+    const newCsrfToken = response.headers.get('X-CSRF-TOKEN');
+    if (newCsrfToken) {
+      // We can't know which token was updated, so update both from cookies
+      updateCsrfTokens();
+    }
+
+    // Handle auth errors - if we get a 401 or 403, try to refresh token once
+    if (response.status === 401 || response.status === 403) {
+      console.log('⏳ Token expired. Attempting refresh...');
+
+      // Only check inactivity if the refresh fails
+      // Try to refresh the token first
+      const refreshSuccess = await refreshToken();
+
+      if (!refreshSuccess) {
+        // Only check inactivity if refresh failed
+        const now = Date.now();
+        const lastUserActivity = getLastUserActivity();
+        const inactiveTime = now - lastUserActivity;
+
+        if (inactiveTime > INACTIVITY_THRESHOLD) {
+          console.warn(`⏳ Inactive for ${inactiveTime / 1000} seconds — logging out.`);
+          await logout();
+          throw new Error('Session ended due to inactivity.');
+        }
+
+        console.warn('⚠️ Refresh failed. Logging out.');
+        await logout();
+        throw new Error('Session expired. Please log in again.');
+      }
+
+      // Retry the original request with the new token (cookie)
+      return fetch(url, fetchOptions);
     }
 
     return response;
@@ -71,42 +109,28 @@ export async function authFetch(url, options = {}) {
 }
 
 /**
- * Check if token is expired
- * @param {string} token - JWT token
- * @param {number} bufferSeconds - Buffer time before expiration (to refresh early)
- * @returns {boolean} - True if token is expired or will expire soon
+ * Check if user is authenticated
+ * @returns {Promise<boolean>} - True if authenticated
  */
-export function isTokenExpired(token, bufferSeconds = 60) {
-  if (!token) return true;
-
+export async function isAuthenticated() {
   try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(window.atob(base64));
+    const response = await fetch(`${API_URL}/me`, {
+      credentials: 'include' // Include cookies
+    });
 
-    // Check with buffer for preemptive renewal
-    return payload.exp * 1000 <= Date.now() + (bufferSeconds * 1000);
-  } catch (e) {
-    console.error('❌ Error checking token expiration', e);
-    return true;
+    return response.ok;
+  } catch (error) {
+    console.error('Auth check error:', error);
+    return false;
   }
 }
 
 /**
- * Simple token expiration check without refresh
- * @returns {boolean} - True if token is valid, false if expired
+ * Simple token validation check
+ * @returns {Promise<boolean>} - True if token is valid
  */
-export function checkTokenExpiration() {
-  const storedToken = localStorage.getItem('authToken');
-  if (!storedToken) return false;
-
-  try {
-    // No buffer - only check if truly expired
-    return !isTokenExpired(storedToken, 0);
-  } catch (e) {
-    console.error('❌ Error checking token expiration', e);
-    return false;
-  }
+export async function checkTokenExpiration() {
+  return await isAuthenticated();
 }
 
 /**
@@ -118,12 +142,12 @@ export async function refreshToken() {
   const now = Date.now();
   if (now - lastRefreshAttempt < MIN_REFRESH_INTERVAL) {
     console.log('🔄 Token refresh throttled. Last attempt:', new Date(lastRefreshAttempt).toISOString());
-    // Wait for the current refresh to complete
     return new Promise(resolve => {
-      const checkInterval = setInterval(() => {
-        if (!tokenRefreshLoading) {
+      const checkInterval = setInterval(async () => {
+        if (!tokenRefreshLoading.get()) {
           clearInterval(checkInterval);
-          resolve(checkTokenExpiration());
+          // Check if we're authenticated after the other refresh completed
+          resolve(await isAuthenticated());
         }
       }, 100);
     });
@@ -132,40 +156,49 @@ export async function refreshToken() {
   lastRefreshAttempt = now;
   console.log('🔄 Attempting token refresh at:', new Date(now).toISOString());
 
+  // Get the latest refresh CSRF token
+  updateCsrfTokens();
+  const refreshCsrfToken = getCsrfToken('refresh');
+
+  if (!refreshCsrfToken) {
+    console.error('❌ No refresh CSRF token available');
+    return false;
+  }
+
   try {
     tokenRefreshLoading.set(true);
-    const refreshToken = localStorage.getItem('refreshToken');
-
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
 
     const response = await fetch(`${API_URL}/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
-        'Authorization': `Bearer ${refreshToken}`
+        'X-CSRF-TOKEN': refreshCsrfToken
       }
     });
 
     if (!response.ok) {
+      console.error('Token refresh failed with status:', response.status);
       throw new Error('Failed to refresh token');
     }
 
-    const data = await response.json();
-    localStorage.setItem('authToken', data.access_token);
-    localStorage.setItem('tokenLifetime', data.token_lifetime.toString());
-    console.log('✅ Token refreshed successfully');
+    // Update CSRF tokens after refresh
+    updateCsrfTokens();
 
+    // Get user info from the response if available
+    try {
+      const data = await response.json();
+      if (data && data.user) {
+        userStore.set({ id: data.user.id });
+      }
+    } catch (jsonError) {
+      console.warn('Could not parse JSON from refresh token response:', jsonError);
+      // Continue anyway as the cookies may have been set
+    }
+
+    console.log('✅ Token refreshed successfully');
     return true;
   } catch (error) {
     console.error('❌ Error refreshing token:', error);
-
-    // Clear tokens and user state on failure
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('tokenLifetime');
-    userStore.set(null);
-
     return false;
   } finally {
     tokenRefreshLoading.set(false);
@@ -175,15 +208,26 @@ export async function refreshToken() {
 /**
  * Logout the current user
  */
-export function logout() {
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('tokenLifetime');
-  localStorage.removeItem('refreshTokenLifetime');
-  userStore.set(null);
+export async function logout() {
+  try {
+    // Get the latest access CSRF token
+    const accessCsrfToken = getCsrfToken('access');
 
-  if (typeof window !== 'undefined') {
-    window.location.href = '/';
+    // Call logout endpoint to clear server-side cookies
+    await fetch(`${API_URL}/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-CSRF-TOKEN': accessCsrfToken
+      }
+    });
+  } catch (error) {
+    console.error('❌ Logout error:', error);
+  } finally {
+    // Clear user state regardless of API result
+    userStore.set(null);
+    // Clear CSRF tokens
+    csrfTokens = { access: null, refresh: null };
   }
 }
 
@@ -208,7 +252,8 @@ export async function login(username, password) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password }),
+      credentials: 'include' // Include cookies in the request
     });
 
     if (response.status === 401) {
@@ -218,27 +263,18 @@ export async function login(username, password) {
       throw new Error(error.msg || 'Authentication error');
     }
 
+    // Update CSRF tokens after login
+    updateCsrfTokens();
+
+    // Parse the response to get user info
     const data = await response.json();
 
-    // Store tokens
-    localStorage.setItem('authToken', data.access_token);
-    localStorage.setItem('refreshToken', data.refresh_token);
-    localStorage.setItem('tokenLifetime', data.token_lifetime.toString());
-
-    // Parse user info from token
-    const base64Url = data.access_token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(window.atob(base64));
-
-    // Warn if token is already expired
-    if (payload.exp * 1000 <= Date.now()) {
-      console.error('⚠️ WARNING: Token is already expired!');
+    // Update user store with user ID
+    if (data && data.user) {
+      userStore.set({ id: data.user.id });
     }
 
-    // Update user store
-    userStore.set({ id: payload.sub });
     console.log('✅ Login successful');
-
     return { success: true };
   } catch (error) {
     console.error('❌ Login error:', error);

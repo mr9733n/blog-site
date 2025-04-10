@@ -2,7 +2,7 @@ import sqlite3
 import uuid
 import imghdr
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import current_app
 from werkzeug.utils import secure_filename
 from PIL import Image as PILImage
@@ -127,7 +127,7 @@ class Image:
 
             # Сохраняем в базу данных
             db = get_db()
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             db.execute(
                 '''INSERT INTO images 

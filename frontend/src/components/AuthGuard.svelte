@@ -6,6 +6,7 @@
   import { authFetch } from '../stores/authService';
 
   export let childComponent; // Component to render when authenticated
+  export let id = undefined;
 
   let user;
   let loading = true;
@@ -42,7 +43,7 @@
     <p>Проверка аутентификации...</p>
   </div>
 {:else if authenticated && user}
-  <svelte:component this={childComponent} />
+  <svelte:component this={childComponent} {id} />
 {:else}
   <div class="redirect-message">
     <div class="spinner"></div>

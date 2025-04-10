@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from backend.models.user import User
 from backend.models.base import get_db, query_db, commit_db
@@ -36,7 +36,7 @@ class Post:
     def create(title, content, author_id):
         """Создать новый пост"""
         db = get_db()
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         db.execute(
             'INSERT INTO posts (title, content, author_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
             [title, content, author_id, now, now]
@@ -53,7 +53,7 @@ class Post:
         db = get_db()
         db.execute(
             'UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?',
-            [title, content, datetime.now().isoformat(), post_id]
+            [title, content, datetime.now(timezone.utc).isoformat(), post_id]
         )
         commit_db()
         return Post.get_by_id(post_id)
@@ -89,6 +89,7 @@ class Post:
             [post_id]
         )
 
+    @staticmethod
     def can_user_edit_post(post_id, user_id):
         """Check if user can edit a post (owner or admin)"""
         # Admin can edit any post

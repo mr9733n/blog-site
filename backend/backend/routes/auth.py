@@ -1,10 +1,10 @@
 # backend/routes/auth.py
 import uuid
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, make_response
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, \
-    get_jwt
-import datetime
+    get_jwt, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
+from datetime import datetime, timedelta, timezone
 
 from backend.models import User
 from backend.services.auth_service import validate_login_credentials
@@ -57,23 +57,38 @@ def login():
 
     # Get user's token lifetime setting
     token_lifetime = User.get_token_lifetime(user_id)
+    refresh_token_lifetime = 15 * 24 * 60 * 60  # 15 days by default
 
     # Create tokens
     current_app.logger.debug(f"Creating access token with identity: {user_id_str}")
 
     access_token = create_access_token(
         identity=user_id_str,  # Explicitly as string
-        expires_delta=datetime.timedelta(seconds=token_lifetime),
+        expires_delta=timedelta(seconds=token_lifetime),
         additional_claims={'jti': str(uuid.uuid4())}
     )
-    refresh_token = create_refresh_token(identity=user_id_str)  # Also ensure this is a string
+    refresh_token = create_refresh_token(
+        identity=user_id_str,  # Also ensure this is a string
+        expires_delta=timedelta(seconds=refresh_token_lifetime)
+    )
 
-    # Return tokens
-    return jsonify(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        token_lifetime=token_lifetime,
-    ), 200
+    # Create response with user data
+    resp = jsonify({
+        "user": {
+            "id": user_id,
+            "username": user.get('username')
+        }
+    })
+
+    # Set cookies
+    set_access_cookies(resp, access_token)
+    set_refresh_cookies(resp, refresh_token)
+
+    # Also set cookie with token lifetime for frontend reference
+    max_age = token_lifetime  # seconds
+    resp.set_cookie('token_lifetime', str(token_lifetime), max_age=max_age, httponly=False, samesite='Strict')
+
+    return resp, 200
 
 
 # Маршрут для регистрации
@@ -106,11 +121,31 @@ def refresh():
     token_lifetime = User.get_token_lifetime(user_id)
     access_token = create_access_token(
         identity=str(user_id),
-        expires_delta=datetime.timedelta(seconds=token_lifetime),
+        expires_delta=timedelta(seconds=token_lifetime),
         additional_claims={'jti': str(uuid.uuid4())}
     )
 
-    return jsonify(access_token=access_token, token_lifetime=token_lifetime), 200
+    # Get user info for response
+    user = User.get_by_id(user_id)
+
+    # Convert sqlite3.Row to dict before accessing with get()
+    user_dict = dict(user) if user else {}
+
+    # Create response
+    resp = jsonify({
+        "user": {
+            "id": user_id,
+            "username": user_dict.get('username', '')
+        }
+    })
+
+    # Set cookie with new access token
+    set_access_cookies(resp, access_token)
+
+    # Also update token lifetime cookie
+    resp.set_cookie('token_lifetime', str(token_lifetime), max_age=token_lifetime, httponly=False, samesite='Strict')
+
+    return resp
 
 
 # Маршрут для обновления настроек токена
@@ -138,21 +173,29 @@ def update_token_settings():
     # Создаем новые токены с обновленными настройками
     access_token = create_access_token(
         identity=current_user_id,
-        expires_delta=datetime.timedelta(seconds=token_lifetime)
+        expires_delta=timedelta(seconds=token_lifetime)
     )
 
     refresh_token = create_refresh_token(
         identity=current_user_id,
-        expires_delta=datetime.timedelta(seconds=refresh_token_lifetime)
+        expires_delta=timedelta(seconds=refresh_token_lifetime)
     )
 
-    return jsonify({
+    # Create response
+    resp = jsonify({
         "msg": "Настройки успешно обновлены",
         "token_lifetime": token_lifetime,
-        "refresh_token_lifetime": refresh_token_lifetime,
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    }), 200
+        "refresh_token_lifetime": refresh_token_lifetime
+    })
+
+    # Set cookies with new tokens
+    set_access_cookies(resp, access_token)
+    set_refresh_cookies(resp, refresh_token)
+
+    # Update token lifetime cookie
+    resp.set_cookie('token_lifetime', str(token_lifetime), max_age=token_lifetime, httponly=False, samesite='Strict')
+
+    return resp
 
 
 # Маршрут для получения информации о текущем пользователе
@@ -187,4 +230,13 @@ def logout():
     # Добавляем токен в черный список
     TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))
 
-    return jsonify({"msg": "Вы успешно вышли из системы"}), 200
+    # Create response
+    resp = jsonify({"msg": "Вы успешно вышли из системы"})
+
+    # Clear all JWT cookies
+    unset_jwt_cookies(resp)
+
+    # Also clear our custom cookies
+    resp.delete_cookie('token_lifetime')
+
+    return resp

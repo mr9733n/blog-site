@@ -7,7 +7,7 @@ import sys
 
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, get_csrf_token, get_jwt
 from dotenv import load_dotenv
 from jwt import decode
 
@@ -48,11 +48,14 @@ logger = configure_logging(app)
 logging.debug(f"Server time: {datetime.datetime.now().isoformat()}")
 logging.debug(f"JWT_SECRET_KEY: {app.config['JWT_SECRET_KEY']}")
 
-# Настройка CORS на основе окружения
+# Configure JWT to use cookies
+app.config['JWT_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'  # True in production
+
+# Enable CORS to work with credentials
 if os.environ.get('FLASK_ENV') == 'production':
-    CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS_PROD']}})
+    CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS_PROD']}}, supports_credentials=True)
 else:
-    CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS_DEV']}})
+    CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS_DEV']}}, supports_credentials=True)
 
 # Настройка JWT
 jwt = JWTManager(app)
@@ -93,8 +96,8 @@ with app.app_context():
 
 @app.before_request
 def log_request_info():
-    if 'Authorization' in request.headers:
-        logger.debug(f"DEBUG: Auth header received: {request.headers['Authorization'][:20]}...")
+    if 'Cookie' in request.headers:
+        logger.debug(f"DEBUG: Auth header received: {request.headers['Cookie'][:20]}...")
     else:
         logger.warning("DEBUG: No Authorization header in request")
         logger.debug(f"DEBUG: Available headers: {list(request.headers.keys())}")
@@ -121,19 +124,61 @@ def check_if_user_blocked():
                 # Пропускаем ошибки декодирования токена
                 pass
 
+
+@app.after_request
+def add_csrf_token_to_response(response):
+    """Добавляет CSRF-токен в заголовок ответа"""
+    try:
+        # Ищем CSRF токен в куках
+        csrf_token = None
+        for cookie_name in ['csrf_access_token', 'csrf_refresh_token']:
+            if cookie_name in request.cookies:
+                csrf_token = request.cookies.get(cookie_name)
+                break
+
+        # Если нашли CSRF токен в куках, добавляем его в заголовок
+        if csrf_token:
+            response.headers['X-CSRF-TOKEN'] = csrf_token
+        else:
+            # Если не нашли в куках, пробуем получить из JWT токена
+            try:
+                # Получаем JWT данные текущего пользователя
+                jwt_data = get_jwt()
+                # Получаем CSRF из JWT данных
+                if 'csrf' in jwt_data:
+                    response.headers['X-CSRF-TOKEN'] = jwt_data['csrf']
+            except:
+                # Если не удалось получить JWT данные, игнорируемtokenRefreshLoading
+                pass
+    except Exception as e:
+        # В случае ошибки логируем, но не прерываем работу
+        app.logger.debug(f"Could not add CSRF token to response: {str(e)}")
+    return response
+
+
 @jwt.token_in_blocklist_loader
 def check_if_token_is_revoked(jwt_header, jwt_payload):
     jti = jwt_payload.get('jti')
-    is_blacklisted = TokenBlacklist.is_token_blacklisted(jti)
-    if is_blacklisted:
-        logger.warning(f"🔒 Заблокированный токен с jti={jti} попытался использоваться")
-    return is_blacklisted
+    user_id = jwt_payload.get('sub')  # Get user_id directly from payload
+
+    try:
+        # Call the TokenBlacklist method with the user_id from the payload
+        is_blacklisted = TokenBlacklist.is_token_blacklisted(jti, user_id)
+        if is_blacklisted:
+            logger.warning(f"🔒 Заблокированный токен с jti={jti} попытался использоваться")
+        return is_blacklisted
+    except Exception as e:
+        logger.error(f"Error checking token blacklist: {e}")
+        # In case of error, deny token to be safe
+        return True
+
 
 # Регистрация Blueprint-ов
 app.register_blueprint(auth_bp, url_prefix='/api')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 app.register_blueprint(posts_bp, url_prefix='/api')
 app.register_blueprint(images_bp, url_prefix='/api')
+
 
 if __name__ == '__main__':
     app.run(debug=app.config['DEBUG'])

@@ -1,4 +1,4 @@
-// src/utils/AuthWrapper.js
+// src/utils/authWrapper.js
 import { navigate } from 'svelte-routing';
 import { authFetch } from '../stores/authService';
 
@@ -27,7 +27,17 @@ export async function checkAuth(redirectTo = '/login') {
  * @returns {boolean} - True if user is admin
  */
 export function isAdmin(user) {
-  return user && user.id === '1'; // Admin has ID 1
+  console.log('Checking admin status for user:', user);
+
+  // Handle both string and number IDs
+  if (!user || user.id === undefined) return false;
+
+  // Convert both to strings for comparison (handles both number and string IDs)
+  const userId = String(user.id);
+  const adminId = '1';
+
+  console.log(`Comparing user ID (${userId}) with admin ID (${adminId})`);
+  return userId === adminId;
 }
 
 /**
@@ -43,5 +53,5 @@ export function canEdit(user, authorId) {
   if (isAdmin(user)) return true;
 
   // Users can edit their own content
-  return user.id === authorId.toString();
+  return String(user.id) === String(authorId);
 }

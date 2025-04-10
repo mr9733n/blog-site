@@ -2,6 +2,7 @@ import fnmatch
 import os
 import shutil
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -60,7 +61,7 @@ def create_clean_archive(source_dir: Path, output_dir: Path, archive_name: str):
                 archive.write(file_path, file_path.relative_to(temp_dir))
 
     shutil.rmtree(temp_dir)
-    print(f"✅ Архив создан: {archive_path}")
+    print(f"✅ Архив создан {datetime.now()}: {archive_path}")
 
 if __name__ == "__main__":
     for name, path in ARCHIVES.items():

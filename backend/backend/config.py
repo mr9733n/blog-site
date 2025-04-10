@@ -16,6 +16,13 @@ class Config:
     CORS_ORIGINS_DEV = ['http://localhost:8080', 'http://localhost:5000', 'http://localhost:3000']
     CORS_ORIGINS_PROD = ['https://blog.666s.dev']
 
+    JWT_TOKEN_LOCATION = 'cookies'
+    JWT_COOKIE_CSRF_PROTECT = True
+    JWT_CSRF_CHECK_FORM = False  # We'll handle CSRF token validation ourselves
+    JWT_ACCESS_COOKIE_PATH = '/api/'  # Restrict cookie access to /api/ paths
+    JWT_REFRESH_COOKIE_PATH = '/api/refresh'  # Restrict refresh cookie
+    JWT_COOKIE_SAMESITE = 'Strict'  # Helps prevent CSRF
+
     JWT_ACCESS_TOKEN_EXPIRES = 30 * 60  # 30 minutes in seconds
     JWT_REFRESH_TOKEN_EXPIRES = 15 * 24 * 60 * 60  # 15 days in seconds
 
@@ -33,12 +40,14 @@ class DevelopmentConfig(Config):
     """Конфигурация для разработки"""
     DEBUG = True
     LOG_LEVEL = logging.DEBUG
+    JWT_COOKIE_SECURE = False
 
 
 class ProductionConfig(Config):
     """Конфигурация для продакшена"""
     DEBUG = False
     LOG_LEVEL = logging.INFO
+    JWT_COOKIE_SECURE = True
 
     # Обязательно использовать переменные окружения для секретных ключей
     @property
