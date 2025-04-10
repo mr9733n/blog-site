@@ -7,6 +7,10 @@ import { getCsrfTokenFromCookies, getAllCsrfTokens } from '../utils/csrfUtils';
 let lastRefreshAttempt = 0;
 let csrfTokens = { access: null, refresh: null };
 const MIN_REFRESH_INTERVAL = 5000; // 5 seconds minimum between refresh attempts
+const AUTH_STATE_KEY = 'auth_state';
+const TOKEN_LIFETIME_KEY = 'tokenLifetime';
+const REFRESH_TOKEN_LIFETIME_KEY = 'refreshTokenLifetime';
+let authInitialized = false;
 
 // Update CSRF tokens (called at login and refresh)
 export function updateCsrfTokens() {
@@ -26,17 +30,74 @@ export function getCsrfToken(type = 'access') {
 // Save token lifetimes to localStorage
 export function saveTokenLifetimes(tokenLifetime, refreshTokenLifetime) {
   if (tokenLifetime) {
-    localStorage.setItem('tokenLifetime', tokenLifetime.toString());
+    localStorage.setItem(TOKEN_LIFETIME_KEY, tokenLifetime.toString());
   }
   if (refreshTokenLifetime) {
-    localStorage.setItem('refreshTokenLifetime', refreshTokenLifetime.toString());
+    localStorage.setItem(REFRESH_TOKEN_LIFETIME_KEY, refreshTokenLifetime.toString());
   }
 }
 
 // Clear token lifetimes from localStorage
 export function clearTokenLifetimes() {
-  localStorage.removeItem('tokenLifetime');
-  localStorage.removeItem('refreshTokenLifetime');
+  localStorage.removeItem(TOKEN_LIFETIME_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_LIFETIME_KEY);
+}
+
+/**
+ * Initialize authentication state on app load
+ * This should be called once when the app loads
+ */
+export async function initAuth() {
+  if (authInitialized) return;
+
+  console.log('🔐 Initializing authentication state');
+
+  try {
+    // First check if we have cookies that might indicate an active session
+    const hasCsrfTokens = updateCsrfTokens();
+    const hasAccessToken = !!hasCsrfTokens.access;
+    const hasRefreshToken = !!hasCsrfTokens.refresh;
+
+    console.log(`Found tokens - Access: ${hasAccessToken}, Refresh: ${hasRefreshToken}`);
+
+    // Next check if we have stored auth state
+    const savedState = restoreAuthState();
+
+    if (savedState && savedState.userId) {
+      console.log(`Found saved auth state for user: ${savedState.userId}`);
+
+      // Temporarily update the user store with the saved ID
+      userStore.set({ id: savedState.userId });
+
+      // Verify with server if this session is actually valid
+      const authenticated = await isAuthenticated();
+
+      if (!authenticated) {
+        console.log('Server rejected authentication, clearing local state');
+        clearAllClientState();
+      } else {
+        console.log('Server confirmed authentication, session is valid');
+      }
+    } else if (hasAccessToken || hasRefreshToken) {
+      // We have cookies but no saved state, try to verify/refresh tokens
+      console.log('Found auth cookies but no saved state, checking with server');
+      const authenticated = await isAuthenticated();
+
+      if (!authenticated) {
+        // Try refresh as a last resort
+        const refreshed = await refreshToken();
+        if (!refreshed) {
+          console.log('Authentication failed and refresh failed, clearing state');
+          clearAllClientState();
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Auth initialization error:', error);
+    clearAllClientState();
+  } finally {
+    authInitialized = true;
+  }
 }
 
 /**
@@ -48,10 +109,8 @@ export function clearTokenLifetimes() {
  * @returns {Promise<Response>} - Fetch response
  */
 export async function authFetch(url, options = {}) {
-  // Update CSRF tokens if not set
-  if (!csrfTokens.access && !csrfTokens.refresh) {
-    updateCsrfTokens();
-  }
+  // Make sure we have the latest CSRF tokens
+  updateCsrfTokens();
 
   // Include credentials to ensure cookies are sent
   const fetchOptions = {
@@ -92,7 +151,6 @@ export async function authFetch(url, options = {}) {
     if (response.status === 401 || response.status === 403) {
       console.log('⏳ Token expired. Attempting refresh...');
 
-      // Only check inactivity if the refresh fails
       // Try to refresh the token first
       const refreshSuccess = await refreshToken();
 
@@ -125,16 +183,38 @@ export async function authFetch(url, options = {}) {
 }
 
 /**
- * Check if user is authenticated
+ * Check if user is authenticated with the server
  * @returns {Promise<boolean>} - True if authenticated
  */
 export async function isAuthenticated() {
   try {
+    console.log('🔍 Checking authentication with server');
     const response = await fetch(`${API_URL}/me`, {
-      credentials: 'include' // Include cookies
+      method: 'GET',
+      credentials: 'include', // Include cookies
+      cache: 'no-store' // Prevent caching
     });
 
-    return response.ok;
+    if (!response.ok) {
+      console.log(`❌ Authentication check failed: ${response.status}`);
+      return false;
+    }
+
+    // Try to get user info from response
+    try {
+      const data = await response.json();
+      if (data && data.user && data.user.id) {
+        // Update user store and save state
+        userStore.set({ id: data.user.id });
+        saveAuthState(data.user.id);
+        console.log(`✅ Authentication confirmed for user: ${data.user.id}`);
+      }
+    } catch (e) {
+      // If we can't parse JSON but response was OK, still consider authenticated
+      console.warn('Could not parse user data from /me, but auth is valid');
+    }
+
+    return true;
   } catch (error) {
     console.error('Auth check error:', error);
     return false;
@@ -189,7 +269,8 @@ export async function refreshToken() {
       credentials: 'include',
       headers: {
         'X-CSRF-TOKEN': refreshCsrfToken
-      }
+      },
+      cache: 'no-store' // Prevent caching
     });
 
     if (!response.ok) {
@@ -213,6 +294,7 @@ export async function refreshToken() {
 
       if (data && data.user) {
         userStore.set({ id: data.user.id });
+        saveAuthState(data.user.id);
       }
     } catch (jsonError) {
       console.warn('Could not parse JSON from refresh token response:', jsonError);
@@ -237,6 +319,8 @@ export async function logout(forceClear = false) {
   let logoutSuccess = false;
 
   try {
+    console.log('🚪 Logging out user');
+
     // Get the latest access CSRF token
     const accessCsrfToken = getCsrfToken('access');
 
@@ -245,33 +329,69 @@ export async function logout(forceClear = false) {
       method: 'POST',
       credentials: 'include',
       headers: {
+        'Content-Type': 'application/json',
         'X-CSRF-TOKEN': accessCsrfToken
-      }
+      },
+      cache: 'no-store' // Prevent caching
     });
 
     logoutSuccess = response.ok;
 
-    // Additional manual cookie clearing - attempt to help the browser
-    document.cookie.split(';').forEach(function(cookie) {
-      const name = cookie.trim().split('=')[0];
-      // Set expired date to clear the cookie
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-    });
+    if (logoutSuccess) {
+      console.log('✅ Server confirmed logout');
+    } else {
+      console.warn(`⚠️ Server logout failed: ${response.status}`);
+    }
+
+    // Always clear cookies on the client side, regardless of server response
+    clearAllCookies();
   } catch (error) {
     console.error('❌ Logout error:', error);
     logoutSuccess = false;
   } finally {
     // Always clear client-side state regardless of server response
-    clearClientState();
+    clearAllClientState();
+    console.log('✅ Client-side logout complete');
   }
 
   return logoutSuccess;
 }
 
 /**
+ * Clear all client-side cookies
+ */
+function clearAllCookies() {
+  console.log('🧹 Clearing all cookies');
+
+  // Get all cookies and clear them one by one
+  document.cookie.split(';').forEach(function(cookie) {
+    const name = cookie.trim().split('=')[0];
+    if (!name) return;
+
+    // Clear for root path
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+
+    // Also try with domain
+    const domain = window.location.hostname;
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${domain}`;
+
+    // Also try subdomain
+    if (domain.indexOf('.') > 0) {
+      const parentDomain = domain.substring(domain.indexOf('.'));
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${parentDomain}`;
+    }
+  });
+
+  // Reset CSRF tokens
+  csrfTokens = { access: null, refresh: null };
+}
+
+/**
  * Clear all client-side authentication state
  */
-function clearClientState() {
+function clearAllClientState() {
+  console.log('🧹 Clearing all client-side auth state');
+
   // Clear token lifetimes in localStorage
   clearTokenLifetimes();
 
@@ -283,9 +403,6 @@ function clearClientState() {
 
   // Clear CSRF tokens
   csrfTokens = { access: null, refresh: null };
-
-  // This will redirect to login page on next check
-  console.log('✅ Client-side auth state cleared successfully');
 }
 
 /**
@@ -304,13 +421,17 @@ export async function login(username, password) {
       console.warn('⚠️ Suspicious characters detected in login credentials');
     }
 
+    // First ensure we're starting with a clean state
+    clearAllClientState();
+
     const response = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ username, password }),
-      credentials: 'include' // Include cookies in the request
+      credentials: 'include', // Include cookies in the request
+      cache: 'no-store' // Prevent caching
     });
 
     if (response.status === 401) {
@@ -343,6 +464,7 @@ export async function login(username, password) {
     return { success: true };
   } catch (error) {
     console.error('❌ Login error:', error);
+    clearAllClientState(); // Clean up on error
     return { success: false, error: error.message };
   }
 }
@@ -361,7 +483,8 @@ export async function register(username, email, password) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username, email, password })
+      body: JSON.stringify({ username, email, password }),
+      cache: 'no-store' // Prevent caching
     });
 
     if (!response.ok) {
@@ -382,7 +505,7 @@ export async function register(username, email, password) {
 export function saveAuthState(userId) {
   if (!userId) return;
 
-  localStorage.setItem('auth_state', JSON.stringify({
+  localStorage.setItem(AUTH_STATE_KEY, JSON.stringify({
     userId: userId,
     timestamp: Date.now()
   }));
@@ -395,7 +518,7 @@ export function saveAuthState(userId) {
  */
 export function restoreAuthState() {
   try {
-    const savedState = localStorage.getItem('auth_state');
+    const savedState = localStorage.getItem(AUTH_STATE_KEY);
     if (!savedState) return null;
 
     const state = JSON.parse(savedState);
@@ -403,11 +526,10 @@ export function restoreAuthState() {
     // Check if saved state is still valid (30 days)
     const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
     if (Date.now() - state.timestamp > maxAge) {
-      localStorage.removeItem('auth_state');
+      localStorage.removeItem(AUTH_STATE_KEY);
       return null;
     }
 
-    console.log('Restored auth state for user:', state.userId);
     return state;
   } catch (error) {
     console.error('Error restoring auth state:', error);
@@ -420,6 +542,5 @@ export function restoreAuthState() {
  * Clear saved auth state from local storage
  */
 export function clearAuthState() {
-  localStorage.removeItem('auth_state');
-  console.log('Auth state cleared');
+  localStorage.removeItem(AUTH_STATE_KEY);
 }

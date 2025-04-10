@@ -12,7 +12,7 @@
   import Profile from "./components/Profile.svelte";
   import AuthGuard from "./components/AuthGuard.svelte";
   import { updateUserActivity, userStore } from './stores/userStore';
-  import { isAuthenticated, logout, restoreAuthState, clearAuthState } from './stores/authService';
+  import { isAuthenticated, logout, initAuth } from './stores/authService';
   import { isAdmin } from "./utils/authWrapper";
   import { onMount } from "svelte";
 
@@ -32,62 +32,26 @@
     localStorage.setItem('darkMode', darkMode);
   }
 
-  // Initial auth check on app load
-onMount(async () => {
-  // We'll keep activity listeners here as they're scoped to the app component
-  // Activity events might not bubble up to window if captured
-  window.addEventListener('click', updateUserActivity);
-  window.addEventListener('keypress', updateUserActivity);
-  window.addEventListener('touchstart', updateUserActivity);
+  // Initial app setup
+  onMount(async () => {
+    console.log("App.svelte: Mounting application");
 
-  // Add scroll event for better activity tracking
-  window.addEventListener('scroll', updateUserActivity);
+    // Setup activity tracking
+    window.addEventListener('click', updateUserActivity);
+    window.addEventListener('keypress', updateUserActivity);
+    window.addEventListener('touchstart', updateUserActivity);
+    window.addEventListener('scroll', updateUserActivity);
 
-  // Prevent auth check loops
-  if (authChecking) return;
+    // Initialize authentication - this handles all the auth state restoration
+    await initAuth();
 
-  try {
-    authChecking = true;
-    console.log("App.svelte: Checking authentication");
-
-    // Check authentication status
-    const authenticated = await isAuthenticated();
-
-    if (!authenticated && user) {
-      console.log("App.svelte: Not authenticated, logging out");
-      logout();
+    // Initialize dark mode from preferences
+    const savedDarkMode = localStorage.getItem('darkMode');
+    if (savedDarkMode) {
+      darkMode = savedDarkMode === 'true';
+      document.body.classList.toggle('dark-mode', darkMode);
     }
-
-	if (!authenticated && !user) {
-	  const savedState = restoreAuthState();
-	  if (savedState && savedState.userId) {
-		// Обновляем userStore с сохраненным ID
-		userStore.set({ id: savedState.userId });
-
-		// Ждем проверки обновленного состояния (асинхронно)
-		setTimeout(async () => {
-		  const stillAuthenticated = await isAuthenticated();
-		  if (!stillAuthenticated) {
-			// Если серверная проверка не прошла, очищаем состояние
-			userStore.set(null);
-			clearAuthState();
-		  }
-		}, 500);
-	  }
-	}
-  } catch (err) {
-    console.error("Auth check error:", err);
-  } finally {
-    authChecking = false;
-  }
-
-  // Initialize dark mode from preferences
-  const savedDarkMode = localStorage.getItem('darkMode');
-  if (savedDarkMode) {
-    darkMode = savedDarkMode === 'true';
-    document.body.classList.toggle('dark-mode', darkMode);
-  }
-});
+  });
 
   // Handle link clicks
   function handleLinkClick() {

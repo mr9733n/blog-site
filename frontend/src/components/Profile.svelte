@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { Link, navigate } from "svelte-routing";
-  import { userStore, tokenExpiration, maskEmail } from "../stores/userStore";
+  import { userStore, tokenExpiration } from "../stores/userStore";
+  import { formatDate, formatFileSize, maskEmail } from "../utils/formatUtils";
   import { api } from "../stores/apiService";
   import { checkAuth, isAdmin } from "../utils/authWrapper";
   import UserSettings from './UserSettings.svelte';
@@ -125,24 +126,6 @@ async function loadProfileData() {
       imageDeleteLoading = false;
     }
   }
-
-  // Функция для форматирования даты
-  function formatDate(dateString) {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ru', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }).format(date);
-  }
-
-  // Функция для форматирования размера файла
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
-
 
 function setTab(tab) {
   activeTab = tab;

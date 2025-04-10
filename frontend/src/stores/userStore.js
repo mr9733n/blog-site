@@ -16,27 +16,6 @@ export function updateUserActivity() {
   lastUserActivity = Date.now();
 }
 
-export function maskEmail(email) {
-  if (!email) return '';
-  const [username, domain] = email.split('@');
-
-  let maskedUsername;
-  if (username.length <= 4) {
-    maskedUsername = username.charAt(0) + '*'.repeat(username.length - 2) + username.charAt(username.length - 1);
-  } else {
-    maskedUsername = username.slice(0, 2) + '*'.repeat(username.length - 4) + username.slice(-2);
-  }
-
-  let maskedDomain;
-  if (domain.length <= 4) {
-    maskedDomain = domain.charAt(0) + '*'.repeat(domain.length - 2) + domain.charAt(domain.length - 1);
-  } else {
-    maskedDomain = domain.slice(0, 2) + '*'.repeat(domain.length - 4) + domain.slice(-2);
-  }
-
-  return `${maskedUsername}@${maskedDomain}`;
-}
-
 // Export the current user activity timestamp for use in other modules
 export function getLastUserActivity() {
   return lastUserActivity;

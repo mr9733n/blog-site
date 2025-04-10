@@ -3,6 +3,7 @@
   import { userStore } from "../stores/userStore";
   import { api } from "../stores/apiService";
   import { login } from "../stores/authService";
+  import { validateUsername, validatePassword } from "../utils/validation";
 
   let username = "";
   let password = "";
@@ -18,8 +19,17 @@
     loading = true;
 
     // Проверка наличия небезопасных символов
-    if (hasSpecialChars) {
-      error = "Логин или пароль содержат недопустимые символы";
+    const usernameValidation = validateUsername(username);
+    const passwordValidation = validatePassword(password);
+
+    if (!usernameValidation.valid) {
+      error = usernameValidation.error;
+      loading = false;
+      return;
+    }
+
+    if (!passwordValidation.valid) {
+      error = passwordValidation.error;
       loading = false;
       return;
     }

@@ -5,6 +5,7 @@
   import { api } from "../stores/apiService";
   import { isAdmin } from "../utils/authWrapper";
   import { renderMarkdown } from "../utils/markdown";
+  import { formatDate } from "../utils/formatUtils";
 
   export let id; // ID поста из параметра маршрута
 
@@ -27,6 +28,7 @@
   let deletingCommentId = null; // Для отслеживания комментария, который собираются удалить
   let renderedContent = ''; // For storing the rendered markdown content
   let contentElement; // Reference to the content div
+  let prevContentHash = '';
 
   userStore.subscribe(value => {
     user = value;
@@ -34,31 +36,59 @@
 
   onMount(async () => {
     try {
-    post = await api.posts.getPosts();
-    console.log('Raw post content:', post.content);
-      // Render markdown content
-    renderedContent = renderMarkdown(post.content);
-    console.log('Rendered markdown:', renderedContent);
+      // Используем правильный метод API для получения поста по ID
+      loading = true;
+      post = await api.posts.getPost(id);
+
+      // Проверяем, что пост загружен корректно
+      if (!post) {
+        throw new Error('Пост не найден');
+      }
+
+      console.log('Post loaded:', post);
+      console.log('Raw post content:', post.content);
+
+      // Проверка на наличие контента перед рендерингом markdown
+      if (post.content) {
+        renderedContent = renderMarkdown(post.content);
+        console.log('Rendered markdown:', renderedContent);
+      } else {
+        renderedContent = '<p>Содержимое поста отсутствует</p>';
+        console.warn('Post has no content');
+      }
+
       loading = false;
 
       // Загрузка комментариев
       await loadComments();
+
+      // Проверяем, сохранен ли пост (только если пользователь авторизован)
       if (post && user) {
         await checkIfSaved();
       }
     } catch (err) {
-      error = err.message;
+      console.error('Error loading post:', err);
+      error = err.message || 'Ошибка при загрузке поста';
       loading = false;
     }
   });
 
 afterUpdate(() => {
-  if (contentElement) {
-    // Удаляем возможный inline обработчик onclick
+  if (!contentElement) return;
+
+  // Хэш для отслеживания изменений контента
+  const contentHash = renderedContent?.length + (post?.id || '');
+
+  // Выполняем обработку только если содержимое изменилось
+  if (contentHash !== prevContentHash) {
+    prevContentHash = contentHash;
+
+    // Находим изображения без обработчиков
     const images = contentElement.querySelectorAll('img:not(.has-click-handler)');
+    if (images.length === 0) return;
+
     images.forEach(img => {
       img.classList.add('clickable-image', 'has-click-handler');
-      // Удалить любые существующие onclick обработчики
       img.removeAttribute('onclick');
     });
   }
@@ -102,6 +132,7 @@ afterUpdate(() => {
     } catch (err) {
       commentError = "Не удалось загрузить комментарии";
       commentsLoading = false;
+      console.error('Error loading comments:', err);
     }
   }
 
@@ -214,18 +245,6 @@ afterUpdate(() => {
     }
   }
 
-  // Функция для форматирования даты
-  function formatDate(dateString) {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ru', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  }
-
   // Функция для удаления поста
   async function deletePost() {
     if (!confirmDelete) {
@@ -247,41 +266,69 @@ afterUpdate(() => {
   }
 
   // Проверка, является ли пользователь автором поста
-	function isAuthor() {
-	  return (user && post && post.author_id === parseInt(user.id)) || isAdmin(user);
-	}
+  function isAuthor() {
+    if (!user || !post) return false;
 
-	function canDeleteComment(comment) {
-	  if (!user || !comment) return false;
+    // Check if user is admin first
+    if (isAdmin(user)) return true;
 
-	  // Check if user is admin
-	  if (isAdmin(user)) return true;
+    // Then check if user is the author
+    try {
+      return post.author_id === parseInt(user.id);
+    } catch (e) {
+      console.error('Error checking author status:', e);
+      return false;
+    }
+  }
 
-	  // Else check standard permissions
-	  const userId = parseInt(user.id);
-	  const commentAuthorId = parseInt(comment.author_id);
-	  const postAuthorId = parseInt(post.author_id);
+  function canDeleteComment(comment) {
+    if (!user || !comment) return false;
 
-	  return userId === commentAuthorId || userId === postAuthorId;
-	}
+    // Check if user is admin
+    if (isAdmin(user)) return true;
 
-	function canEditComment(comment) {
-	  if (!user || !comment) return false;
+    try {
+      // Else check standard permissions
+      const userId = parseInt(user.id);
+      const commentAuthorId = parseInt(comment.author_id);
+      const postAuthorId = post ? parseInt(post.author_id) : null;
 
-	  // Admin can edit any comment
-	  if (isAdmin(user)) return true;
+      return userId === commentAuthorId || userId === postAuthorId;
+    } catch (e) {
+      console.error('Error checking delete permissions:', e);
+      return false;
+    }
+  }
 
-	  // Only author can edit their own comment
-	  const userId = parseInt(user.id);
-	  const commentAuthorId = parseInt(comment.author_id);
+  function canEditComment(comment) {
+    if (!user || !comment) return false;
 
-	  return userId === commentAuthorId;
-	}
+    // Admin can edit any comment
+    if (isAdmin(user)) return true;
+
+    try {
+      // Only author can edit their own comment
+      const userId = parseInt(user.id);
+      const commentAuthorId = parseInt(comment.author_id);
+
+      return userId === commentAuthorId;
+    } catch (e) {
+      console.error('Error checking edit permissions:', e);
+      return false;
+    }
+  }
 
   function sanitizeHTML(str) {
-    const temp = document.createElement('div');
-    temp.textContent = str;
-    return temp.innerHTML;
+    if (!str) return '';
+
+    try {
+      const temp = document.createElement('div');
+      temp.textContent = str;
+      return temp.innerHTML;
+    } catch (e) {
+      console.error('Error sanitizing HTML:', e);
+      return '';
+    }
   }
 
   // Обновляем пагинацию при изменении комментариев
@@ -304,14 +351,14 @@ afterUpdate(() => {
   {:else if post}
     <article class="post-card">
       <header>
-        <h1>{post.title}</h1>
+        <h1>{post.title || 'Без названия'}</h1>
         <div class="post-meta">
           <div class="post-author">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
-            <span>{post.username}</span>
+            <span>{post.username || 'Неизвестный автор'}</span>
           </div>
           <div class="post-date">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -343,7 +390,7 @@ afterUpdate(() => {
       </header>
 
       <div class="post-content markdown-content" bind:this={contentElement}>
-        {@html renderedContent}
+        {@html renderedContent || '<p>Содержимое отсутствует</p>'}
       </div>
 
       <footer>
@@ -416,7 +463,7 @@ afterUpdate(() => {
           {#each paginatedComments as comment}
             <div class="comment">
               <div class="comment-header">
-                <div class="comment-author">{comment.username}</div>
+                <div class="comment-author">{comment.username || 'Анонимный пользователь'}</div>
                 <div class="comment-date">{formatDate(comment.created_at)}</div>
               </div>
 
@@ -517,6 +564,11 @@ afterUpdate(() => {
         </div>
       {/if}
     </section>
+  {:else}
+    <div class="alert alert-warning">
+      <p>Пост не найден</p>
+      <Link to="/">Вернуться на главную</Link>
+    </div>
   {/if}
 </div>
 

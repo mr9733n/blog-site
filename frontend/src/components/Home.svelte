@@ -2,13 +2,14 @@
   import { onMount } from "svelte";
   import { Link } from "svelte-routing";
   import { api } from "../stores/apiService";
-  import { renderMarkdown } from "../utils/markdown";
+  import { renderMarkdown, createMarkdownPreview } from "../utils/markdown";
+  import { formatDate } from "../utils/formatUtils";
 
   let posts = [];
   let loading = true;
   let error = null;
-  let mountCount = 0;
   let isLoading = true;
+  let mountCount = 0;
   let hasFetchedPosts = false;
 
 onMount(() => {
@@ -22,7 +23,6 @@ onMount(() => {
     console.log("Posts already fetched, skipping redundant fetch");
   }
 
-  // Return a cleanup function
   return () => {
     console.log("Home component unmounted");
   };
@@ -40,54 +40,6 @@ async function fetchPosts() {
   }
 }
 
-  // Функция для форматирования даты
-  function formatDate(dateString) {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ru', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  }
-
-  // Функция для обрезки длинного контента и рендеринга markdown
-  function truncateAndRenderContent(content, maxLength = 500) {
-    // Check if content includes image markdown
-    const firstImageMatch = content.match(/!\[([^\]]+)\]\(([^)]+)\)/);
-
-    // First extract the thumbnail image if any
-    let thumbnailImage = null;
-    if (firstImageMatch) {
-      thumbnailImage = {
-        alt: firstImageMatch[1],
-        url: firstImageMatch[2]
-      };
-    }
-
-    // Then truncate the content and remove the first image from it
-    let truncatedContent = content;
-
-    // Remove first image from content to avoid duplication
-    if (firstImageMatch) {
-      truncatedContent = truncatedContent.replace(firstImageMatch[0], '');
-    }
-
-    // Truncate content if it's too long
-    if (truncatedContent.length > maxLength) {
-      truncatedContent = truncatedContent.substr(0, maxLength);
-      // Try to end at a space to avoid cutting words
-      const lastSpace = truncatedContent.lastIndexOf(' ');
-      truncatedContent = truncatedContent.substr(0, lastSpace > maxLength - 20 ? lastSpace : maxLength) + '...';
-    }
-
-    // Render the truncated content as markdown
-    return {
-      thumbnailImage,
-      renderedContent: renderMarkdown(truncatedContent)
-    };
-  }
 </script>
 
 <div class="home">
@@ -118,7 +70,7 @@ async function fetchPosts() {
     <div class="posts-list">
       {#each posts as post}
         <!-- Process content for each post -->
-        {@const { thumbnailImage, renderedContent } = truncateAndRenderContent(post.content)}
+        {@const { thumbnailImage, renderedContent } = createMarkdownPreview(post.content)}
 
         <article class="post-card">
           <header>

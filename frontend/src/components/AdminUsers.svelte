@@ -4,7 +4,8 @@
   import { Link, navigate } from "svelte-routing";
   import { api } from "../stores/apiService";
   import { checkAuth, isAdmin } from "../utils/authWrapper";
-  import { userStore, maskEmail } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { formatDate, formatFileSize, maskEmail } from "../utils/formatUtils";
   import EditUser from './EditUser.svelte';
 
   let users = [];
@@ -129,27 +130,6 @@
   function closeEditMode() {
     editMode = false;
     userToEdit = null;
-  }
-
-  // Функция для форматирования даты
-  function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en', {
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  }
-
-  // Функция для форматирования размера файла
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
   }
 
   // Загружаем список пользователей при монтировании компонента

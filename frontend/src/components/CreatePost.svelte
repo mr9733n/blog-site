@@ -6,6 +6,8 @@
   import { api } from "../stores/apiService";
   import { authFetch } from "../stores/authService";
   import { renderMarkdown } from "../utils/markdown";
+  import { formatFileSize } from "../utils/formatUtils";
+  import { validatePostTitle, validatePostContent, validateImageFile } from "../utils/validation";
 
   let title = "";
   let content = "";
@@ -39,31 +41,34 @@
     }
   });
 
-  async function handleSubmit() {
-    error = "";
-    loading = true;
+async function handleSubmit() {
+  error = "";
+  loading = true;
 
-    // Validation
-    if (!title.trim()) {
-      error = "Заголовок не может быть пустым";
-      loading = false;
-      return;
-    }
-
-    if (!content.trim()) {
-      error = "Содержание поста не может быть пустым";
-      loading = false;
-      return;
-    }
-
-    try {
-      await api.posts.createPost(title, content);
-      navigate("/", { replace: true });
-    } catch (err) {
-      error = err.message;
-      loading = false;
-    }
+  // Валидация заголовка
+  const titleValidation = validatePostTitle(title);
+  if (!titleValidation.valid) {
+    error = titleValidation.error;
+    loading = false;
+    return;
   }
+
+  // Валидация содержимого
+  const contentValidation = validatePostContent(content);
+  if (!contentValidation.valid) {
+    error = contentValidation.error;
+    loading = false;
+    return;
+  }
+
+  try {
+    const result = await api.posts.createPost(title, content);
+    navigate("/", { replace: true });
+  } catch (err) {
+    error = err.message;
+    loading = false;
+  }
+}
 
   // Rest of the component remains the same...
   function togglePreview() {
@@ -197,11 +202,6 @@
     }
   }
 
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
 </script>
 
 <!-- Rest of the component's HTML and style remains the same -->

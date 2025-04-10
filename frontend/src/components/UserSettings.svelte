@@ -4,6 +4,7 @@
   import { api } from "../stores/apiService";
   import { API_URL } from "../config";
   import EditUser from './EditUser.svelte';
+  import { formatDate } from "../utils/formatUtils";
 
   let tokenLifetimeMinutes = 30; // 30 минут по умолчанию
   let refreshTokenLifetimeDays = 15; // 15 дней по умолчанию
@@ -38,6 +39,31 @@
       error = err.message;
     }
   });
+
+function validateTokenSettings(tokenLifetimeMinutes, refreshTokenLifetimeDays) {
+  const errors = {};
+  let isValid = true;
+
+  // Валидация времени жизни токена доступа
+  if (tokenLifetimeMinutes < 5) {
+    errors.tokenLifetime = 'Время жизни токена должно быть не менее 5 минут';
+    isValid = false;
+  } else if (tokenLifetimeMinutes > 1440) {
+    errors.tokenLifetime = 'Время жизни токена должно быть не более 24 часов (1440 минут)';
+    isValid = false;
+  }
+
+  // Валидация времени жизни токена обновления
+  if (refreshTokenLifetimeDays < 1) {
+    errors.refreshTokenLifetime = 'Время жизни токена обновления должно быть не менее 1 дня';
+    isValid = false;
+  } else if (refreshTokenLifetimeDays > 30) {
+    errors.refreshTokenLifetime = 'Время жизни токена обновления должно быть не более 30 дней';
+    isValid = false;
+  }
+
+  return { isValid, errors };
+}
 
   // Display current auth status for debugging
   async function checkAuthStatus() {
@@ -77,68 +103,67 @@
     }
   }
 
-  async function updateSettings() {
-    if (!user) {
-      error = "You need to be logged in to update settings";
-      return;
-    }
+async function updateSettings() {
+  if (!user) {
+    error = "Для обновления настроек необходимо авторизоваться";
+    return;
+  }
 
-    // Debug auth status before attempting update
-    try {
-      await checkAuthStatus();
-    } catch (e) {
-      console.error('Auth check failed:', e);
-    }
+  // Валидация настроек токенов
+  const { isValid, errors } = validateTokenSettings(tokenLifetimeMinutes, refreshTokenLifetimeDays);
+  if (!isValid) {
+    // Выводим первую ошибку из списка
+    error = Object.values(errors)[0];
+    return;
+  }
 
-    loading = true;
-    success = false;
-    error = null;
+  // Debug auth status before attempting update
+  try {
+    await checkAuthStatus();
+  } catch (e) {
+    console.error('Auth check failed:', e);
+  }
 
-    try {
-      // Validation
-      if (tokenLifetimeMinutes < 5 || tokenLifetimeMinutes > 1440) {
-        throw new Error('Token lifetime must be between 5 minutes and 24 hours');
-      }
+  loading = true;
+  success = false;
+  error = null;
 
-      if (refreshTokenLifetimeDays < 1 || refreshTokenLifetimeDays > 30) {
-        throw new Error('Refresh token lifetime must be between 1 and 30 days');
-      }
+  try {
+    // Convert to seconds
+    const tokenLifetimeSeconds = tokenLifetimeMinutes * 60;
+    const refreshTokenLifetimeSeconds = refreshTokenLifetimeDays * 86400;
 
-      // Convert to seconds
-      const tokenLifetimeSeconds = tokenLifetimeMinutes * 60;
-      const refreshTokenLifetimeSeconds = refreshTokenLifetimeDays * 86400;
+    console.log('Updating token settings with values:', {
+      tokenLifetimeSeconds,
+      refreshTokenLifetimeSeconds
+    });
 
-      console.log('Updating token settings with values:', {
-        tokenLifetimeSeconds,
-        refreshTokenLifetimeSeconds
-      });
+    // Send API request
+    const response = await api.settings.updateTokenSettings(
+      tokenLifetimeSeconds,
+      refreshTokenLifetimeSeconds
+    );
 
-      // Send API request
-      const response = await api.settings.updateTokenSettings(
-        tokenLifetimeSeconds,
-        refreshTokenLifetimeSeconds
-      );
+    // Update localStorage
+    localStorage.setItem('tokenLifetime', tokenLifetimeSeconds.toString());
+    localStorage.setItem('refreshTokenLifetime', refreshTokenLifetimeSeconds.toString());
 
-      // Update localStorage
-      localStorage.setItem('tokenLifetime', tokenLifetimeSeconds.toString());
-      localStorage.setItem('refreshTokenLifetime', refreshTokenLifetimeSeconds.toString());
+    success = true;
+    console.log('Settings updated successfully');
+  } catch (err) {
+    console.error('Failed to update settings:', err);
+    error = err.message;
+  } finally {
+    loading = false;
 
-      success = true;
-      console.log('Settings updated successfully');
-    } catch (err) {
-      console.error('Failed to update settings:', err);
-      error = err.message;
-    } finally {
-      loading = false;
-
-      // Auto-hide success message after 3 seconds
-      if (success) {
-        setTimeout(() => {
-          success = false;
-        }, 3000);
-      }
+    // Auto-hide success message after 3 seconds
+    if (success) {
+      setTimeout(() => {
+        success = false;
+      }, 3000);
     }
   }
+}
 
   function handleUserUpdated(event) {
     // Update local userInfo with the new data

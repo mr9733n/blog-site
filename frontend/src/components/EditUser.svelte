@@ -4,6 +4,8 @@
   import { api } from "../stores/apiService";
   import { userStore } from "../stores/userStore";
   import { isAdmin } from "../utils/authWrapper";
+  // Импортируем функции валидации
+  import { validateUsername, validateEmail, validatePassword } from "../utils/validation";
 
   export let userId;
   export let username;
@@ -18,6 +20,7 @@
   let success = null;
   let loading = false;
   let currentUser = null;
+  let validationErrors = {}; // Объект для хранения ошибок каждого поля
 
   userStore.subscribe(value => {
     currentUser = value;
@@ -25,70 +28,111 @@
 
   const dispatch = createEventDispatcher();
 
-	// Функция сохранения изменений
-	async function saveChanges() {
-	  // Очистка предыдущих сообщений
-	  error = null;
-	  success = null;
+  // Функция валидации всех полей формы
+  function validateForm() {
+    validationErrors = {};
+    let isValid = true;
 
-	  // Проверка, что пароли совпадают, если они заполнены
-	  if (newPassword && newPassword !== confirmPassword) {
-		error = 'Пароли не совпадают';
-		return;
-	  }
+    // Валидация имени пользователя, если оно изменилось
+    if (newUsername !== username) {
+      const usernameValidation = validateUsername(newUsername);
+      if (!usernameValidation.valid) {
+        validationErrors.username = usernameValidation.error;
+        isValid = false;
+      }
+    }
 
-	  // Проверка, что есть что обновлять
-	  if (newUsername === username && newEmail === email && !newPassword) {
-		error = 'Нет данных для обновления';
-		return;
-	  }
+    // Валидация email, если он изменился
+    if (newEmail !== email) {
+      const emailValidation = validateEmail(newEmail);
+      if (!emailValidation.valid) {
+        validationErrors.email = emailValidation.error;
+        isValid = false;
+      }
+    }
 
-	  // Подготовка данных для обновления
-	  const userData = {};
-	  if (newUsername !== username) userData.username = newUsername;
-	  if (newEmail !== email) userData.email = newEmail;
-	  if (newPassword) userData.password = newPassword;
+    // Валидация пароля, если он заполнен
+    if (newPassword) {
+      const passwordValidation = validatePassword(newPassword);
+      if (!passwordValidation.valid) {
+        validationErrors.password = passwordValidation.error;
+        isValid = false;
+      }
 
-	  // Обновление данных пользователя
-	  loading = true;
-	  try {
-		// Choose API method based on context - admin or regular user
-		if (adminMode || (currentUser && isAdmin(currentUser) && userId !== currentUser.id)) {
-		  // Admin updating another user
-		  await api.admin.updateUserData(userId, userData);
-		} else {
-		  // User updating own profile
-		  await api.users.updateUserProfile(userData);
+      // Проверка совпадения паролей
+      if (newPassword !== confirmPassword) {
+        validationErrors.confirmPassword = 'Пароли не совпадают';
+        isValid = false;
+      }
+    }
 
-		  // Обновляем данные текущего пользователя
-		  try {
-			await api.users.getCurrentUser(); // Обновит данные через userStore
+    return isValid;
+  }
 
-			// Вызываем перезагрузку профиля
-			// Отправляем событие, которое Profile.svelte может перехватить и перезагрузить профиль
-			window.dispatchEvent(new CustomEvent('profile-updated'));
-		  } catch (refreshError) {
-			console.error('Не удалось обновить данные пользователя:', refreshError);
-		  }
-		}
+  // Функция сохранения изменений
+  async function saveChanges() {
+    // Очистка предыдущих сообщений
+    error = null;
+    success = null;
 
-		success = 'Данные пользователя успешно обновлены';
+    // Валидация формы
+    if (!validateForm()) {
+      error = 'Пожалуйста, исправьте ошибки в форме';
+      return;
+    }
 
-		// Отправляем событие обновления
-		dispatch('userUpdated', {
-		  username: newUsername,
-		  email: newEmail
-		});
+    // Проверка, что есть что обновлять
+    if (newUsername === username && newEmail === email && !newPassword) {
+      error = 'Нет данных для обновления';
+      return;
+    }
 
-		// Сбрасываем поля пароля
-		newPassword = '';
-		confirmPassword = '';
-	  } catch (err) {
-		error = err.message;
-	  } finally {
-		loading = false;
-	  }
-	}
+    // Подготовка данных для обновления
+    const userData = {};
+    if (newUsername !== username) userData.username = newUsername;
+    if (newEmail !== email) userData.email = newEmail;
+    if (newPassword) userData.password = newPassword;
+
+    // Обновление данных пользователя
+    loading = true;
+    try {
+      // Choose API method based on context - admin or regular user
+      if (adminMode || (currentUser && isAdmin(currentUser) && userId !== currentUser.id)) {
+        // Admin updating another user
+        await api.admin.updateUserData(userId, userData);
+      } else {
+        // User updating own profile
+        await api.users.updateUserProfile(userData);
+
+        // Обновляем данные текущего пользователя
+        try {
+          await api.users.getCurrentUser(); // Обновит данные через userStore
+
+          // Вызываем перезагрузку профиля
+          // Отправляем событие, которое Profile.svelte может перехватить и перезагрузить профиль
+          window.dispatchEvent(new CustomEvent('profile-updated'));
+        } catch (refreshError) {
+          console.error('Не удалось обновить данные пользователя:', refreshError);
+        }
+      }
+
+      success = 'Данные пользователя успешно обновлены';
+
+      // Отправляем событие обновления
+      dispatch('userUpdated', {
+        username: newUsername,
+        email: newEmail
+      });
+
+      // Сбрасываем поля пароля
+      newPassword = '';
+      confirmPassword = '';
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  }
 
   // Функция отмены редактирования
   function cancel() {
@@ -99,6 +143,7 @@
     confirmPassword = '';
     error = null;
     success = null;
+    validationErrors = {};
 
     // Закрываем форму редактирования
     dispatch('cancel');
@@ -128,7 +173,11 @@
       bind:value={newUsername}
       disabled={loading}
       required
+      class:input-error={validationErrors.username}
     />
+    {#if validationErrors.username}
+      <div class="validation-error">{validationErrors.username}</div>
+    {/if}
   </div>
 
   <div class="form-group">
@@ -139,7 +188,11 @@
       bind:value={newEmail}
       disabled={loading}
       required
+      class:input-error={validationErrors.email}
     />
+    {#if validationErrors.email}
+      <div class="validation-error">{validationErrors.email}</div>
+    {/if}
   </div>
 
   <div class="form-group">
@@ -150,7 +203,11 @@
       bind:value={newPassword}
       disabled={loading}
       placeholder="Оставьте пустым, чтобы не менять"
+      class:input-error={validationErrors.password}
     />
+    {#if validationErrors.password}
+      <div class="validation-error">{validationErrors.password}</div>
+    {/if}
   </div>
 
   <div class="form-group">
@@ -161,7 +218,11 @@
       bind:value={confirmPassword}
       disabled={loading}
       placeholder="Подтвердите новый пароль"
+      class:input-error={validationErrors.confirmPassword}
     />
+    {#if validationErrors.confirmPassword}
+      <div class="validation-error">{validationErrors.confirmPassword}</div>
+    {/if}
   </div>
 
   <div class="form-actions">
@@ -240,6 +301,16 @@
     border-color: #80bdff;
     outline: 0;
     box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  }
+
+  .input-error {
+    border-color: #dc3545;
+  }
+
+  .validation-error {
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
   }
 
   .form-actions {

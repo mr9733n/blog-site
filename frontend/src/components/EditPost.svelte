@@ -6,6 +6,8 @@
   import { authFetch } from "../stores/authService";
   import { canEdit } from "../utils/authWrapper";
   import { renderMarkdown } from "../utils/markdown";
+  import { formatFileSize } from "../utils/formatUtils";
+  import { validatePostTitle, validatePostContent, validateImageFile } from "../utils/validation";
 
   export let id; // Post ID from route parameter
 
@@ -60,31 +62,34 @@
     }
   });
 
-  async function handleSubmit() {
-    error = "";
-    loading = true;
+async function handleSubmit() {
+  error = "";
+  loading = true;
 
-    // Form validation
-    if (!title.trim()) {
-      error = "Заголовок не может быть пустым";
-      loading = false;
-      return;
-    }
-
-    if (!content.trim()) {
-      error = "Содержание поста не может быть пустым";
-      loading = false;
-      return;
-    }
-
-    try {
-      await api.posts.updatePost(id, title, content);
-      navigate(`/post/${id}`, { replace: true });
-    } catch (err) {
-      error = err.message;
-      loading = false;
-    }
+  // Валидация заголовка
+  const titleValidation = validatePostTitle(title);
+  if (!titleValidation.valid) {
+    error = titleValidation.error;
+    loading = false;
+    return;
   }
+
+  // Валидация содержимого
+  const contentValidation = validatePostContent(content);
+  if (!contentValidation.valid) {
+    error = contentValidation.error;
+    loading = false;
+    return;
+  }
+
+  try {
+    await api.posts.updatePost(id, title, content);
+    navigate(`/post/${id}`, { replace: true });
+  } catch (err) {
+    error = err.message;
+    loading = false;
+  }
+}
 
   // Rest of the component methods remain unchanged
   function togglePreview() {
@@ -167,69 +172,59 @@
 
   // Function to handle file selection
 async function handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+  const file = event.target.files[0];
+  if (!file) return;
 
-    // Проверка типа файла
-    if (!file.type.startsWith('image/')) {
-      error = "Выбранный файл не является изображением";
-      return;
+  // Используем валидацию изображения
+  const imageValidation = validateImageFile(file);
+  if (!imageValidation.valid) {
+    error = imageValidation.error;
+    return;
+  }
+
+  // Очистка ошибок и показ индикатора загрузки
+  error = "";
+  imageUploadProgress = 0;
+
+  try {
+    // Имитация прогресса загрузки
+    const simulateProgress = setInterval(() => {
+      imageUploadProgress += 10;
+      if (imageUploadProgress >= 90) clearInterval(simulateProgress);
+    }, 100);
+
+    // Загрузка файла на сервер через API
+    const response = await api.images.uploadImage(file);
+    clearInterval(simulateProgress);
+    imageUploadProgress = 100;
+
+    // Получаем URL изображения с сервера
+    const imageUrl = response.image.url_path;
+    const imageId = response.image.id;
+
+    // Добавляем в список загруженных изображений
+    uploadedImages = [...uploadedImages, {
+      name: file.filename || file.name,
+      url: imageUrl,
+      size: formatFileSize(file.size), // Используем функцию из утилит
+      id: imageId
+    }];
+
+    // Привязываем изображение к редактируемому посту
+    if (id && imageId) {
+      await api.images.attachImageToPost(imageId, id);
     }
 
-    // Проверка размера файла
-    if (file.size > 5 * 1024 * 1024) {
-      error = "Размер файла не должен превышать 5MB";
-      return;
-    }
-
-    // Очистка ошибок и показ индикатора загрузки
-    error = "";
-    imageUploadProgress = 0;
-
-    try {
-      // Имитация прогресса загрузки
-      const simulateProgress = setInterval(() => {
-        imageUploadProgress += 10;
-        if (imageUploadProgress >= 90) clearInterval(simulateProgress);
-      }, 100);
-
-      // Загрузка файла на сервер через API
-      const response = await api.images.uploadImage(file);
-      clearInterval(simulateProgress);
-      imageUploadProgress = 100;
-
-      // Получаем URL изображения с сервера
-      const imageUrl = response.image.url_path;
-      const imageId = response.image.id;
-
-      // Добавляем в список загруженных изображений
-      uploadedImages = [...uploadedImages, {
-        name: file.filename || file.name,
-        url: imageUrl,
-        size: formatFileSize(file.size),
-        id: imageId
-      }];
-
-      // Привязываем изображение к редактируемому посту
-      if (id && imageId) {
-        await api.images.attachImageToPost(imageId, id);
-      }
-
-      // Сбрасываем индикатор прогресса
-      setTimeout(() => {
-        imageUploadProgress = null;
-      }, 500);
-    } catch (err) {
-      error = "Ошибка загрузки изображения: " + err.message;
+    // Сбрасываем индикатор прогресса
+    setTimeout(() => {
       imageUploadProgress = null;
-    }
+    }, 500);
+  } catch (err) {
+    error = "Ошибка загрузки изображения: " + err.message;
+    imageUploadProgress = null;
+  }
 }
 
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
 </script>
 
 <div class="edit-post">
