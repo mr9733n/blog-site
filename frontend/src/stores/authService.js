@@ -23,6 +23,22 @@ export function getCsrfToken(type = 'access') {
   return type === 'refresh' ? csrfTokens.refresh : csrfTokens.access;
 }
 
+// Save token lifetimes to localStorage
+export function saveTokenLifetimes(tokenLifetime, refreshTokenLifetime) {
+  if (tokenLifetime) {
+    localStorage.setItem('tokenLifetime', tokenLifetime.toString());
+  }
+  if (refreshTokenLifetime) {
+    localStorage.setItem('refreshTokenLifetime', refreshTokenLifetime.toString());
+  }
+}
+
+// Clear token lifetimes from localStorage
+export function clearTokenLifetimes() {
+  localStorage.removeItem('tokenLifetime');
+  localStorage.removeItem('refreshTokenLifetime');
+}
+
 /**
  * Helper function for authenticated requests
  * With cookie-based auth, we don't need to manually add tokens
@@ -187,6 +203,14 @@ export async function refreshToken() {
     // Get user info from the response if available
     try {
       const data = await response.json();
+
+      // Save token lifetimes from response
+      if (data && data.token_lifetime) {
+        const tokenLifetime = data.token_lifetime;
+        const refreshTokenLifetime = data.refresh_token_lifetime;
+        saveTokenLifetimes(tokenLifetime, refreshTokenLifetime);
+      }
+
       if (data && data.user) {
         userStore.set({ id: data.user.id });
       }
@@ -224,6 +248,9 @@ export async function logout() {
   } catch (error) {
     console.error('❌ Logout error:', error);
   } finally {
+    // Clear token lifetimes in localStorage
+    clearTokenLifetimes();
+
     // Clear user state regardless of API result
     userStore.set(null);
     // Clear CSRF tokens
@@ -268,6 +295,13 @@ export async function login(username, password) {
 
     // Parse the response to get user info
     const data = await response.json();
+
+    // Save token lifetimes from response
+    if (data && data.token_lifetime) {
+      const tokenLifetime = data.token_lifetime;
+      const refreshTokenLifetime = data.refresh_token_lifetime;
+      saveTokenLifetimes(tokenLifetime, refreshTokenLifetime);
+    }
 
     // Update user store with user ID
     if (data && data.user) {

@@ -90,6 +90,26 @@ class User:
             raise  # Пробрасываем другие ошибки
 
     @staticmethod
+    def get_refresh_token_lifetime(user_id):
+        """Get refresh token lifetime setting for a user (in seconds)"""
+        try:
+            setting = query_db(
+                'SELECT refresh_token_lifetime FROM user_settings WHERE user_id = ?',
+                [user_id], one=True
+            )
+
+            if setting and setting['refresh_token_lifetime'] is not None:
+                return setting['refresh_token_lifetime']
+
+            # If not found or NULL, use default from config
+            return current_app.config['JWT_REFRESH_TOKEN_EXPIRES']
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                # Table doesn't exist, use default from config
+                return current_app.config['JWT_REFRESH_TOKEN_EXPIRES']
+            raise  # Re-raise other errors
+
+    @staticmethod
     def update_token_settings(user_id, token_lifetime, refresh_token_lifetime):
         """Update token lifetime settings for a user"""
         db = get_db()
@@ -112,12 +132,10 @@ class User:
         commit_db()
         return True
 
-
     @staticmethod
     def get_all_users():
         """Получить список всех пользователей"""
         return query_db('SELECT id, username, email, created_at FROM users ORDER BY id')
-
 
     @staticmethod
     def update_user(user_id, username=None, email=None, password=None):
@@ -161,7 +179,6 @@ class User:
         commit_db()
 
         return True
-
 
     @staticmethod
     def toggle_user_block(user_id, blocked_status):
@@ -208,7 +225,6 @@ class User:
         commit_db()
         return True
 
-
     @staticmethod
     def is_user_blocked(user_id):
         """Проверить, заблокирован ли пользователь"""
@@ -221,7 +237,6 @@ class User:
         except sqlite3.OperationalError:
             # Таблица user_status не существует, значит никто не заблокирован
             return False
-
 
     @staticmethod
     def get_user_with_status(user_id):
@@ -253,7 +268,6 @@ class User:
             user_dict['blocked_reason'] = None
 
         return user_dict
-
 
     @staticmethod
     def get_all_users_with_status():

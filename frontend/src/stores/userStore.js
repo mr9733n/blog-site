@@ -23,7 +23,13 @@ export function getLastUserActivity() {
 
 // Helper function to get token lifetime from cookie
 function getTokenLifetime() {
-  // Read token_lifetime cookie (non-httpOnly)
+  // First check localStorage (your existing approach)
+  const storedTokenLifetime = localStorage.getItem('tokenLifetime');
+  if (storedTokenLifetime) {
+    return parseInt(storedTokenLifetime, 10);
+  }
+
+  // Fallback to cookie method (for backward compatibility)
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=');
@@ -31,7 +37,8 @@ function getTokenLifetime() {
       return parseInt(value, 10);
     }
   }
-  return 1800; // Default to 30 minutes if cookie not found
+
+  return 1800; // Default to 30 minutes if not found
 }
 
 // Derived store for token expiration countdown

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from backend.models import User
 from backend.services.auth_service import validate_login_credentials
 from backend.models.token_blacklist import TokenBlacklist
+from backend.models.base import query_db
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -55,13 +56,14 @@ def login():
     if User.is_user_blocked(user_id):
         return jsonify({"msg": "Ваш аккаунт заблокирован администратором"}), 403
 
-    # Get user's token lifetime setting
+    # Get user's token lifetime settings using helper methods
     token_lifetime = User.get_token_lifetime(user_id)
-    refresh_token_lifetime = 15 * 24 * 60 * 60  # 15 days by default
+    refresh_token_lifetime = User.get_refresh_token_lifetime(user_id)
+
+    # Debug logging
+    current_app.logger.debug(f"Login using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}")
 
     # Create tokens
-    current_app.logger.debug(f"Creating access token with identity: {user_id_str}")
-
     access_token = create_access_token(
         identity=user_id_str,  # Explicitly as string
         expires_delta=timedelta(seconds=token_lifetime),
@@ -72,21 +74,19 @@ def login():
         expires_delta=timedelta(seconds=refresh_token_lifetime)
     )
 
-    # Create response with user data
+    # Create response with user data and token lifetimes
     resp = jsonify({
         "user": {
             "id": user_id,
             "username": user.get('username')
-        }
+        },
+        "token_lifetime": token_lifetime,
+        "refresh_token_lifetime": refresh_token_lifetime
     })
 
     # Set cookies
     set_access_cookies(resp, access_token)
     set_refresh_cookies(resp, refresh_token)
-
-    # Also set cookie with token lifetime for frontend reference
-    max_age = token_lifetime  # seconds
-    resp.set_cookie('token_lifetime', str(token_lifetime), max_age=max_age, httponly=False, samesite='Strict')
 
     return resp, 200
 
@@ -117,8 +117,15 @@ def refresh():
     # Блокируем refresh токен
     TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))
 
-    # Дальше создаем новый access токен
+    # Получаем сроки жизни токенов через вспомогательные методы
     token_lifetime = User.get_token_lifetime(user_id)
+    refresh_token_lifetime = User.get_refresh_token_lifetime(user_id)
+
+    # Debug logging
+    current_app.logger.debug(
+        f"Refresh using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}")
+
+    # Создаем новый access токен
     access_token = create_access_token(
         identity=str(user_id),
         expires_delta=timedelta(seconds=token_lifetime),
@@ -131,19 +138,18 @@ def refresh():
     # Convert sqlite3.Row to dict before accessing with get()
     user_dict = dict(user) if user else {}
 
-    # Create response
+    # Create response with token lifetimes
     resp = jsonify({
         "user": {
             "id": user_id,
             "username": user_dict.get('username', '')
-        }
+        },
+        "token_lifetime": token_lifetime,
+        "refresh_token_lifetime": refresh_token_lifetime
     })
 
     # Set cookie with new access token
     set_access_cookies(resp, access_token)
-
-    # Also update token lifetime cookie
-    resp.set_cookie('token_lifetime', str(token_lifetime), max_age=token_lifetime, httponly=False, samesite='Strict')
 
     return resp
 
@@ -192,9 +198,6 @@ def update_token_settings():
     set_access_cookies(resp, access_token)
     set_refresh_cookies(resp, refresh_token)
 
-    # Update token lifetime cookie
-    resp.set_cookie('token_lifetime', str(token_lifetime), max_age=token_lifetime, httponly=False, samesite='Strict')
-
     return resp
 
 
@@ -235,8 +238,5 @@ def logout():
 
     # Clear all JWT cookies
     unset_jwt_cookies(resp)
-
-    # Also clear our custom cookies
-    resp.delete_cookie('token_lifetime')
 
     return resp
