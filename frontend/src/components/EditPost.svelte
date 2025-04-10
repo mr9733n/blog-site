@@ -42,7 +42,7 @@
       }
 
       // Load the post information
-      post = await api.getPost(id);
+      post = await api.posts.getPost(id);
 
       // Check if user has edit permissions
       if (!canEdit(user, post.author_id)) {
@@ -78,7 +78,7 @@
     }
 
     try {
-      await api.updatePost(id, title, content);
+      await api.posts.updatePost(id, title, content);
       navigate(`/post/${id}`, { replace: true });
     } catch (err) {
       error = err.message;
@@ -194,7 +194,7 @@ async function handleFileSelect(event) {
       }, 100);
 
       // Загрузка файла на сервер через API
-      const response = await api.uploadImage(file);
+      const response = await api.images.uploadImage(file);
       clearInterval(simulateProgress);
       imageUploadProgress = 100;
 
@@ -212,7 +212,7 @@ async function handleFileSelect(event) {
 
       // Привязываем изображение к редактируемому посту
       if (id && imageId) {
-        await api.attachImageToPost(imageId, id);
+        await api.images.attachImageToPost(imageId, id);
       }
 
       // Сбрасываем индикатор прогресса

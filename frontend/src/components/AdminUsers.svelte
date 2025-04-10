@@ -4,7 +4,8 @@
   import { Link, navigate } from "svelte-routing";
   import { api } from "../stores/apiService";
   import { checkAuth, isAdmin } from "../utils/authWrapper";
-  import { userStore } from "../stores/userStore";
+  import { userStore, maskEmail } from "../stores/userStore";
+  import EditUser from './EditUser.svelte';
 
   let users = [];
   let loading = true;
@@ -15,6 +16,21 @@
   let blockingUser = false;
   let actionSuccess = null;
   let showUserImagesList = false;
+  let editMode = false;
+  let userToEdit = null;
+  let showEmails = false;
+
+  function toggleEmailVisibility(userId) {
+    users = users.map(user => {
+      if (user.id === userId) {
+        return {
+          ...user,
+          showEmail: !user.showEmail
+        };
+      }
+      return user;
+    });
+  }
 
   // Функция загрузки списка пользователей
   async function loadUsers() {
@@ -23,7 +39,7 @@
     actionSuccess = null;
 
     try {
-      users = await api.getAllUsers();
+      users = await api.admin.getAllUsers();
       loading = false;
     } catch (err) {
       error = err.message;
@@ -37,7 +53,7 @@
     error = null;
 
     try {
-      userImages = await api.getUserImages(userId);
+      userImages = await api.users.getUserImages(userId);
       showUserImagesList = true;
       loadingImages = false;
     } catch (err) {
@@ -56,7 +72,7 @@
 
     try {
       const newBlockStatus = !currentBlockStatus;
-      await api.toggleUserBlock(userId, newBlockStatus);
+      await api.admin.toggleUserBlock(userId, newBlockStatus);
 
       // Обновляем список пользователей после действия
       await loadUsers();
@@ -76,7 +92,7 @@
   async function deleteImage(imageId) {
     if (confirm('Вы действительно хотите удалить это изображение?')) {
       try {
-        await api.deleteImage(imageId);
+        await api.images.deleteImage(imageId);
         // Обновляем список изображений
         userImages = userImages.filter(img => img.id !== imageId);
         actionSuccess = "Изображение успешно удалено";
@@ -86,14 +102,43 @@
     }
   }
 
+  // Функция для редактирования пользователя
+  function editUser(user) {
+    userToEdit = user;
+    editMode = true;
+  }
+
+  // Обработчик события обновления пользователя
+  function handleUserUpdated(event) {
+    // Обновляем данные пользователя в списке
+    if (userToEdit) {
+      const index = users.findIndex(u => u.id === userToEdit.id);
+      if (index !== -1) {
+        users[index] = {
+          ...users[index],
+          username: event.detail.username,
+          email: event.detail.email
+        };
+      }
+      actionSuccess = "Данные пользователя успешно обновлены";
+      closeEditMode();
+    }
+  }
+
+  // Закрыть режим редактирования
+  function closeEditMode() {
+    editMode = false;
+    userToEdit = null;
+  }
+
   // Функция для форматирования даты
   function formatDate(dateString) {
-    if (!dateString) return 'Н/Д';
+    if (!dateString) return 'N/A';
 
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ru', {
+    return new Intl.DateTimeFormat('en', {
       year: 'numeric',
-      month: 'long',
+      month: 'numeric',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -146,6 +191,23 @@
     <div class="loading-users">
       <p>Загрузка списка пользователей...</p>
     </div>
+  {:else if editMode && userToEdit}
+    <div class="edit-user-section">
+      <div class="section-header">
+        <button class="btn-back" on:click={closeEditMode}>
+          &laquo; Назад к списку пользователей
+        </button>
+        <h4>Редактирование пользователя</h4>
+      </div>
+      <EditUser
+        userId={userToEdit.id}
+        username={userToEdit.username}
+        email={userToEdit.email}
+        adminMode={true}
+        on:userUpdated={handleUserUpdated}
+        on:cancel={closeEditMode}
+      />
+    </div>
   {:else}
     <!-- Подробный список пользователей -->
     {#if !showUserImagesList}
@@ -154,11 +216,11 @@
           <thead>
             <tr>
               <th>ID</th>
-              <th>Имя пользователя</th>
+              <th>User</th>
               <th>Email</th>
-              <th>Дата регистрации</th>
-              <th>Статус</th>
-              <th>Действия</th>
+              <th>Created</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -166,41 +228,84 @@
               <tr class="{user.is_blocked ? 'user-blocked' : ''}">
                 <td>{user.id}</td>
                 <td>{user.username}</td>
-                <td>{user.email}</td>
+<td class="email-cell">
+  {#if user.showEmail}
+    <span>{user.email}</span>
+  {:else}
+    <span>{maskEmail(user.email)}</span>
+  {/if}
+  <button
+    on:click={() => toggleEmailVisibility(user.id)}
+    class="icon-button email-visibility-toggle"
+    title={user.showEmail ? 'Hide email' : 'Show email'}
+  >
+    {#if user.showEmail}
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    {:else}
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+        <line x1="1" y1="1" x2="23" y2="23"/>
+      </svg>
+    {/if}
+  </button>
+</td>
                 <td>{formatDate(user.created_at)}</td>
                 <td>
                   {#if user.is_blocked}
-                    <span class="status-blocked">Заблокирован</span>
+                    <span class="status-blocked">Blocked</span>
                     {#if user.blocked_at}
                       <br>
                       <small>с {formatDate(user.blocked_at)}</small>
                     {/if}
                   {:else}
-                    <span class="status-active">Активен</span>
+                    <span class="status-active">Active</span>
                   {/if}
-                </td>
-                <td class="user-actions">
-                  {#if user.id !== 1} <!-- Не показываем для админа -->
-                    <button
-                      class="btn-block {user.is_blocked ? 'btn-unblock' : 'btn-block'}"
-                      on:click={() => toggleUserBlock(user.id, user.is_blocked)}
-                      disabled={blockingUser}
-                    >
-                      {user.is_blocked ? 'Разблокировать' : 'Заблокировать'}
-                    </button>
-                  {/if}
-                  <button
-                    class="btn-images"
-                    on:click={() => loadUserImages(user.id)}
-                  >
-                    Изображения
-                  </button>
-                  <!-- Будет в будущем
-                  <button class="btn-edit">
-                    Редактировать
-                  </button>
-                  -->
-                </td>
+<td class="user-actions">
+  {#if user.id !== 1}
+    <button
+      class="icon-button {user.is_blocked ? 'btn-unblock' : 'btn-block'}"
+      on:click={() => toggleUserBlock(user.id, user.is_blocked)}
+      disabled={blockingUser}
+      title={user.is_blocked ? 'Unblock User' : 'Block User'}
+    >
+      {#if user.is_blocked}
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      {:else}
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        </svg>
+      {/if}
+    </button>
+  {/if}
+  <button
+    class="icon-button btn-images"
+    on:click={() => loadUserImages(user.id)}
+    title="Open User Images"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+      <circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </svg>
+  </button>
+  <button
+    class="icon-button btn-edit"
+    on:click={() => editUser(user)}
+    title="Edit User"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>
+  </button>
+</td>
               </tr>
             {/each}
           </tbody>
@@ -302,6 +407,31 @@
     margin-bottom: 20px;
   }
 
+  .section-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .section-header h4 {
+    margin: 0;
+  }
+
+  .btn-back {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 15px;
+    margin-right: 15px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-back:hover {
+    background-color: #5a6268;
+  }
+
   .users-table-container {
     overflow-x: auto;
   }
@@ -343,6 +473,7 @@
   }
 
   .user-actions {
+    display: flex;
     flex-wrap: wrap;
     gap: 5px;
   }
@@ -350,8 +481,7 @@
   .btn-block,
   .btn-unblock,
   .btn-images,
-  .btn-edit,
-  .btn-back {
+  .btn-edit {
     padding: 6px 12px;
     font-size: 0.85rem;
     border: none;
@@ -396,28 +526,9 @@
     background-color: #5a6268;
   }
 
-  .btn-back {
-    background-color: #6c757d;
-    color: white;
-    margin-right: 15px;
-  }
-
-  .btn-back:hover {
-    background-color: #5a6268;
-  }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-
-  .section-header h4 {
-    margin: 0;
-  }
-
   /* Стили для списка изображений */
-  .user-images-section {
+  .user-images-section,
+  .edit-user-section {
     margin-top: 15px;
   }
 
@@ -532,6 +643,42 @@
     background-color: #c82333;
   }
 
+  .icon-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    transition: color 0.2s;
+  }
+
+  .icon-button:hover {
+    color: #000;
+  }
+
+  .icon-button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .icon-button:disabled {
+    color: #ccc;
+    cursor: not-allowed;
+  }
+
+  .email-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .email-visibility-toggle {
+    margin-left: 10px;
+  }
   /* Адаптивность для мобильных устройств */
   @media (max-width: 768px) {
     .users-table th,
@@ -553,4 +700,5 @@
       gap: 15px;
     }
   }
-  </style>
+
+</style>

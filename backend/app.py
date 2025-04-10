@@ -16,6 +16,7 @@ from backend.models.user import User
 from backend.models.base import get_db
 from backend.models.token_blacklist import TokenBlacklist
 from backend.routes.admin import admin_bp
+from backend.routes.user import user_bp
 from backend.routes.posts import posts_bp
 from backend.routes.images import images_bp
 from backend.routes.auth import auth_bp, jwt_handlers
@@ -178,6 +179,7 @@ app.register_blueprint(auth_bp, url_prefix='/api')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 app.register_blueprint(posts_bp, url_prefix='/api')
 app.register_blueprint(images_bp, url_prefix='/api')
+app.register_blueprint(user_bp, url_prefix='/api/user')
 
 
 if __name__ == '__main__':

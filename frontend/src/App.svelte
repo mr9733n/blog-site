@@ -12,7 +12,7 @@
   import Profile from "./components/Profile.svelte";
   import AuthGuard from "./components/AuthGuard.svelte";
   import { updateUserActivity, userStore } from './stores/userStore';
-  import { isAuthenticated, logout } from './stores/authService';
+  import { isAuthenticated, logout, restoreAuthState, clearAuthState } from './stores/authService';
   import { isAdmin } from "./utils/authWrapper";
   import { onMount } from "svelte";
 
@@ -57,6 +57,24 @@ onMount(async () => {
       console.log("App.svelte: Not authenticated, logging out");
       logout();
     }
+
+	if (!authenticated && !user) {
+	  const savedState = restoreAuthState();
+	  if (savedState && savedState.userId) {
+		// Обновляем userStore с сохраненным ID
+		userStore.set({ id: savedState.userId });
+
+		// Ждем проверки обновленного состояния (асинхронно)
+		setTimeout(async () => {
+		  const stillAuthenticated = await isAuthenticated();
+		  if (!stillAuthenticated) {
+			// Если серверная проверка не прошла, очищаем состояние
+			userStore.set(null);
+			clearAuthState();
+		  }
+		}, 500);
+	  }
+	}
   } catch (err) {
     console.error("Auth check error:", err);
   } finally {
@@ -268,4 +286,4 @@ onMount(async () => {
       gap: 1rem;
     }
   }
-  </style>
+</style>

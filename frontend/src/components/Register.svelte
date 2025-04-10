@@ -1,6 +1,6 @@
 <script>
   import { navigate } from "svelte-routing";
-  import { api } from "../stores/apiService";
+  import { login, register } from "../stores/authService";
 
   let username = "";
   let email = "";
@@ -41,7 +41,7 @@
       return;
     }
 
-    const result = await api.register(username, email, password);
+    const result = await register(username, email, password);
 
     if (result.success) {
       success = true;

@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { Link, navigate } from "svelte-routing";
-  import { userStore, tokenExpiration } from "../stores/userStore";
+  import { userStore, tokenExpiration, maskEmail } from "../stores/userStore";
   import { api } from "../stores/apiService";
   import { checkAuth, isAdmin } from "../utils/authWrapper";
   import UserSettings from './UserSettings.svelte';
@@ -24,44 +24,64 @@
     user = value;
   });
 
-  onMount(async () => {
-    // Check authentication first (triggers token refresh if needed)
-    if (!(await checkAuth())) return;
+	onMount(async () => {
+	  // Check authentication first (triggers token refresh if needed)
+	  if (!(await checkAuth())) return;
 
-    loading = true;
+	  loading = true;
 
-    try {
-      // Загрузка информации о текущем пользователе
-      userInfo = await api.getCurrentUser();
+	  try {
+		await loadProfileData();
+	  } catch (err) {
+		error = err.message;
+	  } finally {
+		loading = false;
+	  }
 
-      // Загрузка постов пользователя
-      userPosts = await api.getUserPosts(userInfo.id);
+	  // Добавляем обработчик обновления профиля
+	  const handleProfileUpdated = async () => {
+		console.log("Reloading profile data after update");
+		try {
+		  loading = true;
+		  await loadProfileData();
+		} catch (err) {
+		  error = err.message;
+		} finally {
+		  loading = false;
+		}
+	  };
 
-      loading = false;
+	  window.addEventListener('profile-updated', handleProfileUpdated);
 
-      if (user) {
-        await loadSavedPosts();
-      }
-
-    } catch (err) {
-      error = err.message;
-    } finally {
-      loading = false;
-    }
-  });
+	  return () => {
+		window.removeEventListener('profile-updated', handleProfileUpdated);
+	  };
+	});
 
   async function loadSavedPosts() {
     try {
-      savedPosts = await api.getSavedPosts();
+      savedPosts = await api.posts.getSavedPosts();
     } catch (err) {
       error = err.message;
     }
   }
 
+async function loadProfileData() {
+  // Загрузка информации о текущем пользователе
+  userInfo = await api.users.getCurrentUser();
+
+  // Загрузка постов пользователя
+  userPosts = await api.users.getUserPosts(userInfo.id);
+
+  if (user) {
+    await loadSavedPosts();
+  }
+}
+
   async function loadUserImages() {
     try {
       console.log("Loading images for user ID:", userInfo.id);
-      userImages = await api.getUserImages(userInfo.id);
+      userImages = await api.users.getUserImages(userInfo.id);
       console.log("Received user images:", userImages);
 
       // Если массив пустой, добавим дополнительную проверку через прямой fetch
@@ -83,7 +103,7 @@
 
   async function unsavePost(postId) {
     try {
-      await api.unsavePost(postId);
+      await api.posts.unsavePost(postId);
       // Удаляем пост из списка
       savedPosts = savedPosts.filter(post => post.id !== postId);
     } catch (err) {
@@ -96,7 +116,7 @@
 
     imageDeleteLoading = true;
     try {
-      await api.deleteImage(imageId);
+      await api.posts.deleteImage(imageId);
       // Удаляем изображение из списка
       userImages = userImages.filter(img => img.id !== imageId);
     } catch (err) {
@@ -138,7 +158,7 @@ async function loadAllPosts() {
 
   loadingAllPosts = true;
   try {
-    allPosts = await api.getPosts();
+    allPosts = await api.posts.getPosts();
     loadingAllPosts = false;
   } catch (err) {
     error = err.message;
@@ -152,7 +172,7 @@ async function deletePost(postId) {
   }
 
   try {
-    await api.deletePost(postId);
+    await api.posts.deletePost(postId);
     // Refresh the list
     allPosts = allPosts.filter(post => post.id !== postId);
   } catch (err) {
@@ -192,7 +212,7 @@ async function deletePost(postId) {
 		  {#if isAdmin(user)}
 			<div class="admin-badge">Администратор</div>
 		  {/if}
-		  <p class="profile-email">{userInfo.email}</p>
+		  <p class="profile-email">{maskEmail(userInfo.email)}</p>
             <p class="profile-date">Участник с {formatDate(userInfo.created_at)}</p>
             <div class="token-info">
               <p>Срок действия токена: <strong>{$tokenExpiration} сек.</strong></p>

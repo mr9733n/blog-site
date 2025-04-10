@@ -104,12 +104,12 @@ export async function authFetch(url, options = {}) {
 
         if (inactiveTime > INACTIVITY_THRESHOLD) {
           console.warn(`⏳ Inactive for ${inactiveTime / 1000} seconds — logging out.`);
-          await logout();
+          await logout(true);
           throw new Error('Session ended due to inactivity.');
         }
 
         console.warn('⚠️ Refresh failed. Logging out.');
-        await logout();
+        await logout(true);
         throw new Error('Session expired. Please log in again.');
       }
 
@@ -231,31 +231,61 @@ export async function refreshToken() {
 
 /**
  * Logout the current user
+ * @param {boolean} [forceClear=false] - Force clear local storage even if the server logout fails
  */
-export async function logout() {
+export async function logout(forceClear = false) {
+  let logoutSuccess = false;
+
   try {
     // Get the latest access CSRF token
     const accessCsrfToken = getCsrfToken('access');
 
     // Call logout endpoint to clear server-side cookies
-    await fetch(`${API_URL}/logout`, {
+    const response = await fetch(`${API_URL}/logout`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'X-CSRF-TOKEN': accessCsrfToken
       }
     });
+
+    logoutSuccess = response.ok;
+
+    // Additional manual cookie clearing - attempt to help the browser
+    document.cookie.split(';').forEach(function(cookie) {
+      const name = cookie.trim().split('=')[0];
+      // Set expired date to clear the cookie
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    });
   } catch (error) {
     console.error('❌ Logout error:', error);
+    logoutSuccess = false;
   } finally {
-    // Clear token lifetimes in localStorage
-    clearTokenLifetimes();
-
-    // Clear user state regardless of API result
-    userStore.set(null);
-    // Clear CSRF tokens
-    csrfTokens = { access: null, refresh: null };
+    // Always clear client-side state regardless of server response
+    clearClientState();
   }
+
+  return logoutSuccess;
+}
+
+/**
+ * Clear all client-side authentication state
+ */
+function clearClientState() {
+  // Clear token lifetimes in localStorage
+  clearTokenLifetimes();
+
+  // Clear saved auth state
+  clearAuthState();
+
+  // Clear user state
+  userStore.set(null);
+
+  // Clear CSRF tokens
+  csrfTokens = { access: null, refresh: null };
+
+  // This will redirect to login page on next check
+  console.log('✅ Client-side auth state cleared successfully');
 }
 
 /**
@@ -306,6 +336,7 @@ export async function login(username, password) {
     // Update user store with user ID
     if (data && data.user) {
       userStore.set({ id: data.user.id });
+      saveAuthState(data.user.id);
     }
 
     console.log('✅ Login successful');
@@ -342,4 +373,53 @@ export async function register(username, email, password) {
   } catch (error) {
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Save user ID to local storage for potential restoration
+ * @param {string} userId - User ID to save
+ */
+export function saveAuthState(userId) {
+  if (!userId) return;
+
+  localStorage.setItem('auth_state', JSON.stringify({
+    userId: userId,
+    timestamp: Date.now()
+  }));
+  console.log('Auth state saved for user:', userId);
+}
+
+/**
+ * Try to restore auth state from local storage
+ * @returns {Object|null} - Restored auth state or null
+ */
+export function restoreAuthState() {
+  try {
+    const savedState = localStorage.getItem('auth_state');
+    if (!savedState) return null;
+
+    const state = JSON.parse(savedState);
+
+    // Check if saved state is still valid (30 days)
+    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+    if (Date.now() - state.timestamp > maxAge) {
+      localStorage.removeItem('auth_state');
+      return null;
+    }
+
+    console.log('Restored auth state for user:', state.userId);
+    return state;
+  } catch (error) {
+    console.error('Error restoring auth state:', error);
+    clearAuthState();
+    return null;
+  }
+}
+
+/**
+ * Clear saved auth state from local storage
+ */
+export function clearAuthState() {
+  localStorage.removeItem('auth_state');
+  console.log('Auth state cleared');
 }

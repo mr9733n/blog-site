@@ -31,7 +31,7 @@ onMount(() => {
 async function fetchPosts() {
   console.log("fetchPosts called at", new Date().toISOString());
   try {
-    posts = await api.getPosts();
+    posts = await api.posts.getPosts();
     console.log(`Received ${posts.length} posts`);
     loading = false;
   } catch (err) {

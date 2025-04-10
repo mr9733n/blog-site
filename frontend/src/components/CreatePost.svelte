@@ -57,7 +57,7 @@
     }
 
     try {
-      await api.createPost(title, content);
+      await api.posts.createPost(title, content);
       navigate("/", { replace: true });
     } catch (err) {
       error = err.message;
@@ -172,7 +172,7 @@
       }, 100);
 
       // Загрузка файла на сервер через API
-      const response = await api.uploadImage(file);
+      const response = await api.images.uploadImage(file);
       clearInterval(simulateProgress);
       imageUploadProgress = 100;
 

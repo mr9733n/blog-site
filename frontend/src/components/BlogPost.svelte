@@ -34,7 +34,7 @@
 
   onMount(async () => {
     try {
-    post = await api.getPost(id);
+    post = await api.posts.getPosts();
     console.log('Raw post content:', post.content);
       // Render markdown content
     renderedContent = renderMarkdown(post.content);
@@ -67,7 +67,7 @@ afterUpdate(() => {
   async function checkIfSaved() {
     if (user && post) {
       try {
-        isSaved = await api.isPostSaved(post.id);
+        isSaved = await api.posts.isPostSaved(post.id);
       } catch (err) {
         console.error("Ошибка проверки сохранения:", err);
       }
@@ -76,7 +76,7 @@ afterUpdate(() => {
 
   async function savePost() {
     try {
-      await api.savePost(post.id);
+      await api.posts.savePost(post.id);
       isSaved = true;
     } catch (err) {
       error = err.message;
@@ -85,7 +85,7 @@ afterUpdate(() => {
 
   async function unsavePost() {
     try {
-      await api.unsavePost(post.id);
+      await api.posts.unsavePost(post.id);
       isSaved = false;
     } catch (err) {
       error = err.message;
@@ -96,7 +96,7 @@ afterUpdate(() => {
   async function loadComments() {
     commentsLoading = true;
     try {
-      comments = await api.getPostComments(id);
+      comments = await api.comments.getPostComments(id);
       applyPagination(); // Применяем пагинацию после загрузки комментариев
       commentsLoading = false;
     } catch (err) {
@@ -150,7 +150,7 @@ afterUpdate(() => {
     commentsLoading = true;
 
     try {
-      await api.addComment(id, newComment);
+      await api.comments.addComment(id, newComment);
       newComment = "";
       await loadComments();
     } catch (err) {
@@ -182,7 +182,7 @@ afterUpdate(() => {
     commentsLoading = true;
 
     try {
-      await api.updateComment(commentId, editCommentContent);
+      await api.comments.updateComment(commentId, editCommentContent);
       editingCommentId = null;
       editCommentContent = "";
       await loadComments();
@@ -205,7 +205,7 @@ afterUpdate(() => {
     commentsLoading = true;
 
     try {
-      await api.deleteComment(commentId);
+      await api.comments.deleteComment(commentId);
       deletingCommentId = null; // Сбрасываем после успешного удаления
       await loadComments();
     } catch (err) {
@@ -234,7 +234,7 @@ afterUpdate(() => {
     }
 
     try {
-      await api.deletePost(id);
+      await api.posts.deletePost(id);
       navigate("/", { replace: true });
     } catch (err) {
       error = err.message;

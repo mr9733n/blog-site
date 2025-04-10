@@ -2,10 +2,13 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { api } from "../stores/apiService";
+  import { userStore } from "../stores/userStore";
+  import { isAdmin } from "../utils/authWrapper";
 
   export let userId;
   export let username;
   export let email;
+  export let adminMode = false; // Prop to determine if in admin mode
 
   let newUsername = username;
   let newEmail = email;
@@ -14,54 +17,78 @@
   let error = null;
   let success = null;
   let loading = false;
+  let currentUser = null;
+
+  userStore.subscribe(value => {
+    currentUser = value;
+  });
 
   const dispatch = createEventDispatcher();
 
-  // Функция сохранения изменений
-  async function saveChanges() {
-    // Очистка предыдущих сообщений
-    error = null;
-    success = null;
+	// Функция сохранения изменений
+	async function saveChanges() {
+	  // Очистка предыдущих сообщений
+	  error = null;
+	  success = null;
 
-    // Проверка, что пароли совпадают, если они заполнены
-    if (newPassword && newPassword !== confirmPassword) {
-      error = 'Пароли не совпадают';
-      return;
-    }
+	  // Проверка, что пароли совпадают, если они заполнены
+	  if (newPassword && newPassword !== confirmPassword) {
+		error = 'Пароли не совпадают';
+		return;
+	  }
 
-    // Проверка, что есть что обновлять
-    if (newUsername === username && newEmail === email && !newPassword) {
-      error = 'Нет данных для обновления';
-      return;
-    }
+	  // Проверка, что есть что обновлять
+	  if (newUsername === username && newEmail === email && !newPassword) {
+		error = 'Нет данных для обновления';
+		return;
+	  }
 
-    // Подготовка данных для обновления
-    const userData = {};
-    if (newUsername !== username) userData.username = newUsername;
-    if (newEmail !== email) userData.email = newEmail;
-    if (newPassword) userData.password = newPassword;
+	  // Подготовка данных для обновления
+	  const userData = {};
+	  if (newUsername !== username) userData.username = newUsername;
+	  if (newEmail !== email) userData.email = newEmail;
+	  if (newPassword) userData.password = newPassword;
 
-    // Обновление данных пользователя
-    loading = true;
-    try {
-      await api.updateUserData(userId, userData);
-      success = 'Данные пользователя успешно обновлены';
+	  // Обновление данных пользователя
+	  loading = true;
+	  try {
+		// Choose API method based on context - admin or regular user
+		if (adminMode || (currentUser && isAdmin(currentUser) && userId !== currentUser.id)) {
+		  // Admin updating another user
+		  await api.admin.updateUserData(userId, userData);
+		} else {
+		  // User updating own profile
+		  await api.users.updateUserProfile(userData);
 
-      // Отправляем событие обновления
-      dispatch('userUpdated', {
-        username: newUsername,
-        email: newEmail
-      });
+		  // Обновляем данные текущего пользователя
+		  try {
+			await api.users.getCurrentUser(); // Обновит данные через userStore
 
-      // Сбрасываем поля пароля
-      newPassword = '';
-      confirmPassword = '';
-    } catch (err) {
-      error = err.message;
-    } finally {
-      loading = false;
-    }
-  }
+			// Вызываем перезагрузку профиля
+			// Отправляем событие, которое Profile.svelte может перехватить и перезагрузить профиль
+			window.dispatchEvent(new CustomEvent('profile-updated'));
+		  } catch (refreshError) {
+			console.error('Не удалось обновить данные пользователя:', refreshError);
+		  }
+		}
+
+		success = 'Данные пользователя успешно обновлены';
+
+		// Отправляем событие обновления
+		dispatch('userUpdated', {
+		  username: newUsername,
+		  email: newEmail
+		});
+
+		// Сбрасываем поля пароля
+		newPassword = '';
+		confirmPassword = '';
+	  } catch (err) {
+		error = err.message;
+	  } finally {
+		loading = false;
+	  }
+	}
 
   // Функция отмены редактирования
   function cancel() {
