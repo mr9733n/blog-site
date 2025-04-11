@@ -405,7 +405,7 @@ async function deletePost(postId) {
     </div>
   {/if}
 </div>
-<DebugHelper />
+{#if isAdmin(user)}<DebugHelper />{/if}
 <style>
 .admin-badge {
   display: inline-block;
