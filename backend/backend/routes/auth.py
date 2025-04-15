@@ -10,29 +10,14 @@ from datetime import datetime, timedelta, timezone
 from backend.models import User
 from backend.services.auth_service import validate_login_credentials
 from backend.models.token_blacklist import TokenBlacklist
+from backend.models.session import SessionManager  # New import
+from backend.models.security import SecurityMonitor  # New import
 from backend.models.base import query_db
 
 auth_bp = Blueprint('auth', __name__)
 
 
-# Функция для настройки JWT обработчиков
-def jwt_handlers(jwt):
-    @jwt.invalid_token_loader
-    def invalid_token_callback(error_string):
-        current_app.logger.error(f"DEBUG: Invalid token error: {error_string}")
-        return jsonify({"msg": f"Invalid token: {error_string}"}), 422
-
-    @jwt.unauthorized_loader
-    def unauthorized_callback(error_string):
-        current_app.logger.error(f"DEBUG: Unauthorized error: {error_string}")
-        return jsonify({"msg": f"Unauthorized: {error_string}"}), 401
-
-    @jwt.token_in_blocklist_loader
-    def check_if_token_is_revoked(jwt_header, jwt_payload):
-        jti = jwt_payload.get('jti')
-        return TokenBlacklist.is_token_blacklisted(jti)
-
-
+# Функция для настройки JWT обработчиков теперь перемещена в auth/jwt_handlers.py
 # Маршрут для авторизации
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -91,8 +76,8 @@ def login():
         }
     )
 
-    # Store session with device fingerprint
-    TokenBlacklist.store_session_key(
+    # Store session with device fingerprint - CHANGED FROM TokenBlacklist to SessionManager
+    SessionManager.store_session(
         user_id,
         session_key,
         csrf_state,
@@ -169,22 +154,27 @@ def refresh():
     new_session_key = secrets.token_hex(16)
     csrf_state = secrets.token_hex(16)
 
-    if not session_key or not TokenBlacklist.validate_session_key(session_key):
+    # CHANGED: Use SessionManager instead of TokenBlacklist
+    if not session_key or not SessionManager.check_session_valid(session_key):
         return jsonify({"msg": "Недействительный токен обновления"}), 401
 
-    # Verify device fingerprint matches the saved one
-    if device_fingerprint and not TokenBlacklist.validate_session_fingerprint(session_key, device_fingerprint):
+    # Verify device fingerprint matches the saved one - CHANGED: Use SessionManager
+    if device_fingerprint and not SessionManager.validate_fingerprint(session_key, device_fingerprint):
         current_app.logger.warning(f"Fingerprint mismatch during refresh for user {user_id}")
         return jsonify({"msg": "Недействительный токен обновления - несоответствие устройства"}), 403
 
-    # Update session with new key and same fingerprint
-    TokenBlacklist.update_session_keys(
-        session_key=session_key,
-        new_session_key=new_session_key,
-        csrf_state=csrf_state,
-        session_state=session_state,
-        device_fingerprint=device_fingerprint
+    # Update session with new key and same fingerprint - CHANGED: Use SessionManager
+    SessionManager.update_session(
+        session_key,
+        new_session_key,
+        csrf_state,
+        session_state,
+        device_fingerprint
     )
+
+    # Record this request for security monitoring
+    SecurityMonitor.track_request_counter(session_key)
+    SecurityMonitor.track_activity_pattern(session_key)
 
     # Создаем новый access токен
     access_token = create_access_token(
@@ -308,14 +298,14 @@ def logout():
     session_key = current_token.get('session_key')
 
     # Optional fingerprint validation - we should still allow logout even if fingerprint doesn't match
-    # This just logs a warning if something suspicious happens
-    if session_key and device_fingerprint and not TokenBlacklist.validate_session_fingerprint(session_key,
-                                                                                              device_fingerprint):
+    # This just logs a warning if something suspicious happens - CHANGED: Use SessionManager
+    if session_key and device_fingerprint and not SessionManager.validate_fingerprint(session_key, device_fingerprint):
         current_app.logger.warning(f"Suspicious logout: fingerprint mismatch for user {user_id}")
 
     # Delete the session and blacklist token regardless of fingerprint
     if session_key:
-        TokenBlacklist.delete_session_key(session_key)
+        # CHANGED: Use SessionManager
+        SessionManager.delete_session(session_key)
 
     # Добавляем токен в черный список
     TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))

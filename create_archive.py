@@ -15,7 +15,8 @@ ARCHIVES = {
 # Папки и паттерны, которые исключаем
 EXCLUSIONS = {
     "logs", ".venv", ".idea", "__pycache__", ".git", "node_modules",
-    "*.db", "*.pyc", "*.pyo", "*.pyd", "*.log", "*.sqlite3", ".gitattributes", ".gitignore", "_default.conf", "*.mermaid", "*.svg", "*.webp",
+    # "*.db",
+    "*.pyc", "*.pyo", "*.pyd", "*.log", "*.sqlite3", ".gitattributes", ".gitignore", "_default.conf", "*.mermaid", "*.svg", "*.webp",
     "*.md"
 }
 
