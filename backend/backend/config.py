@@ -21,10 +21,12 @@ class Config:
     JWT_CSRF_CHECK_FORM = False  # We'll handle CSRF token validation ourselves
     JWT_ACCESS_COOKIE_PATH = '/api/'  # Restrict cookie access to /api/ paths
     JWT_REFRESH_COOKIE_PATH = '/api/refresh'  # Restrict refresh cookie
-    JWT_COOKIE_SAMESITE = 'Strict'  # Helps prevent CSRF
+    # JWT_COOKIE_SAMESITE = 'Strict'  # Helps prevent CSRF
+    JWT_COOKIE_SAMESITE = 'Lax'  # Вместо 'Strict', чтобы токены сохранялись при навигации
 
     JWT_ACCESS_TOKEN_EXPIRES = 30 * 60  # 30 minutes in seconds
     JWT_REFRESH_TOKEN_EXPIRES = 15 * 24 * 60 * 60  # 15 days in seconds
+    MAX_INACTIVITY = 3600
 
     # Настройки для изображений
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}

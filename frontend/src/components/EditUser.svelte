@@ -16,15 +16,22 @@
   let newEmail = email;
   let newPassword = '';
   let confirmPassword = '';
+  let currentPassword = '';
   let error = null;
   let success = null;
   let loading = false;
   let currentUser = null;
   let validationErrors = {}; // Объект для хранения ошибок каждого поля
+  let showCurrentPasswordField = false; // Controls visibility of current password field
 
   userStore.subscribe(value => {
     currentUser = value;
   });
+
+  // Determine if this is self-update or admin update
+  $: isSelfUpdate = currentUser && currentUser.id === userId;
+  // Show current password field if it's a self-update and either password is being changed or sensitive fields are modified
+  $: showCurrentPasswordField = isSelfUpdate && (newPassword || newUsername !== username || newEmail !== email);
 
   const dispatch = createEventDispatcher();
 
@@ -66,6 +73,12 @@
       }
     }
 
+    // Validate current password is provided if required
+    if (showCurrentPasswordField && !currentPassword) {
+      validationErrors.currentPassword = 'Для изменения профиля необходимо ввести текущий пароль';
+      isValid = false;
+    }
+
     return isValid;
   }
 
@@ -92,6 +105,7 @@
     if (newUsername !== username) userData.username = newUsername;
     if (newEmail !== email) userData.email = newEmail;
     if (newPassword) userData.password = newPassword;
+    if (currentPassword) userData.currentPassword = currentPassword;
 
     // Обновление данных пользователя
     loading = true;
@@ -101,7 +115,7 @@
         // Admin updating another user
         await api.admin.updateUserData(userId, userData);
       } else {
-        // User updating own profile
+        // User updating own profile - include currentPassword
         await api.users.updateUserProfile(userData);
 
         // Обновляем данные текущего пользователя
@@ -127,6 +141,7 @@
       // Сбрасываем поля пароля
       newPassword = '';
       confirmPassword = '';
+      currentPassword = '';
     } catch (err) {
       error = err.message;
     } finally {
@@ -141,6 +156,7 @@
     newEmail = email;
     newPassword = '';
     confirmPassword = '';
+    currentPassword = '';
     error = null;
     success = null;
     validationErrors = {};
@@ -194,6 +210,27 @@
       <div class="validation-error">{validationErrors.email}</div>
     {/if}
   </div>
+
+  {#if showCurrentPasswordField}
+    <div class="form-group current-password">
+      <label for="current-password">Текущий пароль <span class="required">*</span></label>
+      <input
+        type="password"
+        id="current-password"
+        bind:value={currentPassword}
+        disabled={loading}
+        required
+        placeholder="Введите текущий пароль для подтверждения изменений"
+        class:input-error={validationErrors.currentPassword}
+      />
+      {#if validationErrors.currentPassword}
+        <div class="validation-error">{validationErrors.currentPassword}</div>
+      {/if}
+      <div class="password-info">
+        Для безопасности, при изменении личных данных или пароля требуется ввести текущий пароль
+      </div>
+    </div>
+  {/if}
 
   <div class="form-group">
     <label for="password">Новый пароль</label>
@@ -352,5 +389,26 @@
   .btn-save:disabled {
     background-color: #b3b7bb;
     cursor: not-allowed;
+  }
+
+  .current-password {
+    border-top: 1px dashed #ccc;
+    border-bottom: 1px dashed #ccc;
+    padding: 15px 0;
+    margin: 15px 0;
+    background-color: #f0f4f8;
+    padding: 15px;
+    border-radius: 4px;
+  }
+
+  .required {
+    color: #dc3545;
+  }
+
+  .password-info {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-top: 5px;
+    font-style: italic;
   }
 </style>

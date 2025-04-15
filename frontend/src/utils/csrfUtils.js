@@ -1,25 +1,37 @@
 // src/utils/csrfUtils.js
+// Extend with CSRF State functionality
 
 /**
  * Get CSRF token from cookies
- * @param {string} type - Type of token to get ('access' or 'refresh')
+ * @param {string} type - 'access' or 'refresh'
  * @returns {string|null} - CSRF token or null if not found
  */
 export function getCsrfTokenFromCookies(type = 'access') {
-  const cookies = document.cookie.split(';')
-    .map(cookie => cookie.trim())
-    .reduce((acc, cookie) => {
-      const [name, value] = cookie.split('=');
-      acc[name] = value;
-      return acc;
-    }, {});
+  const cookieName = type === 'refresh' ? 'csrf_refresh_token' : 'csrf_access_token';
 
-  // Explicitly return the correct token based on type
-  if (type === 'refresh') {
-    return cookies.csrf_refresh_token || null;
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === cookieName) {
+      return value;
+    }
   }
+  return null;
+}
 
-  return cookies.csrf_access_token || null;
+/**
+ * Get CSRF state from cookies
+ * @returns {string|null} - CSRF state or null if not found
+ */
+export function getCsrfStateFromCookies() {
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'csrf_state') {
+      return value;
+    }
+  }
+  return null;
 }
 
 /**
@@ -27,16 +39,20 @@ export function getCsrfTokenFromCookies(type = 'access') {
  * @returns {Object} - Object with access and refresh CSRF tokens
  */
 export function getAllCsrfTokens() {
-  const cookies = document.cookie.split(';')
-    .map(cookie => cookie.trim())
-    .reduce((acc, cookie) => {
-      const [name, value] = cookie.split('=');
-      acc[name] = value;
-      return acc;
-    }, {});
-
   return {
-    access: cookies.csrf_access_token || null,
-    refresh: cookies.csrf_refresh_token || null
+    access: getCsrfTokenFromCookies('access'),
+    refresh: getCsrfTokenFromCookies('refresh')
+  };
+}
+
+/**
+ * Get complete CSRF data (tokens and state)
+ * @returns {Object} - Object with access token, refresh token, and state
+ */
+export function getAllCsrfData() {
+  return {
+    access: getCsrfTokenFromCookies('access'),
+    refresh: getCsrfTokenFromCookies('refresh'),
+    state: getCsrfStateFromCookies()
   };
 }

@@ -1,30 +1,40 @@
 // src/stores/authService.js
 import { userStore, tokenRefreshLoading, getLastUserActivity, INACTIVITY_THRESHOLD } from './userStore';
 import { API_URL } from '../config';
-import { getCsrfTokenFromCookies, getAllCsrfTokens } from '../utils/csrfUtils';
+import { getCsrfTokenFromCookies, getAllCsrfTokens, getCsrfStateFromCookies, getAllCsrfData } from '../utils/csrfUtils';
+import { getDeviceFingerprint } from '../utils/fingerprintUtils';
 
 // Last token refresh timestamp to prevent too frequent refresh attempts
 let lastRefreshAttempt = 0;
-let csrfTokens = { access: null, refresh: null };
+let csrfData = { access: null, refresh: null, state: null };
 const MIN_REFRESH_INTERVAL = 5000; // 5 seconds minimum between refresh attempts
 const AUTH_STATE_KEY = 'auth_state';
 const TOKEN_LIFETIME_KEY = 'tokenLifetime';
 const REFRESH_TOKEN_LIFETIME_KEY = 'refreshTokenLifetime';
 let authInitialized = false;
 
-// Update CSRF tokens (called at login and refresh)
-export function updateCsrfTokens() {
-  csrfTokens = getAllCsrfTokens();
-  return csrfTokens;
+// Update CSRF tokens and state (called at login and refresh)
+export function updateCsrfData() {
+  csrfData = getAllCsrfData();
+  return csrfData;
 }
 
 // Get current CSRF token based on type
 export function getCsrfToken(type = 'access') {
-  if (!csrfTokens.access && !csrfTokens.refresh) {
-    updateCsrfTokens();
+  if (!csrfData.access && !csrfData.refresh) {
+    updateCsrfData();
   }
 
-  return type === 'refresh' ? csrfTokens.refresh : csrfTokens.access;
+  return type === 'refresh' ? csrfData.refresh : csrfData.access;
+}
+
+// Get current CSRF state
+export function getCsrfState() {
+  if (!csrfData.state) {
+    updateCsrfData();
+  }
+
+  return csrfData.state;
 }
 
 // Save token lifetimes to localStorage
@@ -54,9 +64,9 @@ export async function initAuth() {
 
   try {
     // First check if we have cookies that might indicate an active session
-    const hasCsrfTokens = updateCsrfTokens();
-    const hasAccessToken = !!hasCsrfTokens.access;
-    const hasRefreshToken = !!hasCsrfTokens.refresh;
+    const csrfData = updateCsrfData();
+    const hasAccessToken = !!csrfData.access;
+    const hasRefreshToken = !!csrfData.refresh;
 
     console.log(`Found tokens - Access: ${hasAccessToken}, Refresh: ${hasRefreshToken}`);
 
@@ -109,8 +119,8 @@ export async function initAuth() {
  * @returns {Promise<Response>} - Fetch response
  */
 export async function authFetch(url, options = {}) {
-  // Make sure we have the latest CSRF tokens
-  updateCsrfTokens();
+  // Make sure we have the latest CSRF tokens and state
+  updateCsrfData();
 
   // Include credentials to ensure cookies are sent
   const fetchOptions = {
@@ -123,16 +133,31 @@ export async function authFetch(url, options = {}) {
     ...fetchOptions.headers || {}
   };
 
-  // Add the appropriate CSRF token based on the endpoint
+  // Add device fingerprint to all requests
+  try {
+    const deviceFingerprint = await getDeviceFingerprint();
+    fetchOptions.headers['X-Device-Fingerprint'] = deviceFingerprint;
+  } catch (error) {
+    console.warn('Could not generate device fingerprint:', error);
+  }
+
+  // Add the appropriate CSRF token and state based on the endpoint
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)) {
+    const csrfState = getCsrfState();
+
+    // Add CSRF state to all protected requests if available
+    if (csrfState) {
+      fetchOptions.headers['X-CSRF-STATE'] = csrfState;
+    }
+
     // Use refresh token for refresh endpoint
     if (url.endsWith('/refresh')) {
-      if (csrfTokens.refresh) {
-        fetchOptions.headers['X-CSRF-TOKEN'] = csrfTokens.refresh;
+      if (csrfData.refresh) {
+        fetchOptions.headers['X-CSRF-TOKEN'] = csrfData.refresh;
       }
-    } else if (csrfTokens.access) {
+    } else if (csrfData.access) {
       // Use access token for all other endpoints
-      fetchOptions.headers['X-CSRF-TOKEN'] = csrfTokens.access;
+      fetchOptions.headers['X-CSRF-TOKEN'] = csrfData.access;
     }
   }
 
@@ -144,7 +169,7 @@ export async function authFetch(url, options = {}) {
     const newCsrfToken = response.headers.get('X-CSRF-TOKEN');
     if (newCsrfToken) {
       // We can't know which token was updated, so update both from cookies
-      updateCsrfTokens();
+      updateCsrfData();
     }
 
     // Handle auth errors - if we get a 401 or 403, try to refresh token once
@@ -189,7 +214,7 @@ export async function authFetch(url, options = {}) {
 export async function isAuthenticated() {
   try {
     console.log('🔍 Checking authentication with server');
-    const response = await fetch(`${API_URL}/me`, {
+    const response = await authFetch(`${API_URL}/me`, {
       method: 'GET',
       credentials: 'include', // Include cookies
       cache: 'no-store' // Prevent caching
@@ -203,11 +228,11 @@ export async function isAuthenticated() {
     // Try to get user info from response
     try {
       const data = await response.json();
-      if (data && data.user && data.user.id) {
+      if (data && data.id) {
         // Update user store and save state
-        userStore.set({ id: data.user.id });
-        saveAuthState(data.user.id);
-        console.log(`✅ Authentication confirmed for user: ${data.user.id}`);
+        userStore.set({ id: data.id });
+        saveAuthState(data.id);
+        console.log(`✅ Authentication confirmed for user: ${data.id}`);
       }
     } catch (e) {
       // If we can't parse JSON but response was OK, still consider authenticated
@@ -238,12 +263,21 @@ export async function refreshToken() {
   const now = Date.now();
   if (now - lastRefreshAttempt < MIN_REFRESH_INTERVAL) {
     console.log('🔄 Token refresh throttled. Last attempt:', new Date(lastRefreshAttempt).toISOString());
+
+    // Fixed: Using a proper way to check if token refresh is in progress
     return new Promise(resolve => {
-      const checkInterval = setInterval(async () => {
-        if (!tokenRefreshLoading.get()) {
+      // Check if we're already refreshing by using a proper subscription
+      let isRefreshing = false;
+      const unsubscribe = tokenRefreshLoading.subscribe(value => {
+        isRefreshing = value;
+      });
+
+      const checkInterval = setInterval(() => {
+        if (!isRefreshing) {
           clearInterval(checkInterval);
+          unsubscribe(); // Clean up the subscription
           // Check if we're authenticated after the other refresh completed
-          resolve(await isAuthenticated());
+          resolve(isAuthenticated());
         }
       }, 100);
     });
@@ -252,9 +286,10 @@ export async function refreshToken() {
   lastRefreshAttempt = now;
   console.log('🔄 Attempting token refresh at:', new Date(now).toISOString());
 
-  // Get the latest refresh CSRF token
-  updateCsrfTokens();
+  // Get the latest refresh CSRF token and state
+  updateCsrfData();
   const refreshCsrfToken = getCsrfToken('refresh');
+  const csrfState = getCsrfState();
 
   if (!refreshCsrfToken) {
     console.error('❌ No refresh CSRF token available');
@@ -262,13 +297,19 @@ export async function refreshToken() {
   }
 
   try {
+    // Use proper store value setting - set a boolean value
     tokenRefreshLoading.set(true);
+
+    // Get device fingerprint for the request
+    const deviceFingerprint = await getDeviceFingerprint();
 
     const response = await fetch(`${API_URL}/refresh`, {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'X-CSRF-TOKEN': refreshCsrfToken
+        'X-CSRF-TOKEN': refreshCsrfToken,
+        'X-Device-Fingerprint': deviceFingerprint,
+        ...(csrfState ? { 'X-CSRF-STATE': csrfState } : {})
       },
       cache: 'no-store' // Prevent caching
     });
@@ -279,7 +320,7 @@ export async function refreshToken() {
     }
 
     // Update CSRF tokens after refresh
-    updateCsrfTokens();
+    updateCsrfData();
 
     // Get user info from the response if available
     try {
@@ -307,6 +348,7 @@ export async function refreshToken() {
     console.error('❌ Error refreshing token:', error);
     return false;
   } finally {
+    // Ensure tokenRefreshLoading is set to false when done
     tokenRefreshLoading.set(false);
   }
 }
@@ -321,8 +363,10 @@ export async function logout(forceClear = false) {
   try {
     console.log('🚪 Logging out user');
 
-    // Get the latest access CSRF token
+    // Get the latest access CSRF token and state
     const accessCsrfToken = getCsrfToken('access');
+    const csrfState = getCsrfState();
+    const deviceFingerprint = await getDeviceFingerprint();
 
     // Call logout endpoint to clear server-side cookies
     const response = await fetch(`${API_URL}/logout`, {
@@ -330,7 +374,9 @@ export async function logout(forceClear = false) {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': accessCsrfToken
+        'X-CSRF-TOKEN': accessCsrfToken,
+        'X-Device-Fingerprint': deviceFingerprint,
+        ...(csrfState ? { 'X-CSRF-STATE': csrfState } : {})
       },
       cache: 'no-store' // Prevent caching
     });
@@ -382,8 +428,8 @@ function clearAllCookies() {
     }
   });
 
-  // Reset CSRF tokens
-  csrfTokens = { access: null, refresh: null };
+  // Reset CSRF data
+  csrfData = { access: null, refresh: null, state: null };
 }
 
 /**
@@ -401,8 +447,10 @@ function clearAllClientState() {
   // Clear user state
   userStore.set(null);
 
-  // Clear CSRF tokens
-  csrfTokens = { access: null, refresh: null };
+  // Clear CSRF data
+  csrfData = { access: null, refresh: null, state: null };
+
+  // Don't clear device fingerprint - it's device-specific, not session-specific
 }
 
 /**
@@ -424,10 +472,14 @@ export async function login(username, password) {
     // First ensure we're starting with a clean state
     clearAllClientState();
 
+    // Get device fingerprint for the login
+    const deviceFingerprint = await getDeviceFingerprint();
+
     const response = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Device-Fingerprint': deviceFingerprint
       },
       body: JSON.stringify({ username, password }),
       credentials: 'include', // Include cookies in the request
@@ -441,8 +493,8 @@ export async function login(username, password) {
       throw new Error(error.msg || 'Authentication error');
     }
 
-    // Update CSRF tokens after login
-    updateCsrfTokens();
+    // Update CSRF data after login
+    updateCsrfData();
 
     // Parse the response to get user info
     const data = await response.json();
@@ -524,7 +576,7 @@ export function restoreAuthState() {
     const state = JSON.parse(savedState);
 
     // Check if saved state is still valid (30 days)
-    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+    const maxAge = 1 * 24 * 60 * 60 * 1000; // 1 day in milliseconds
     if (Date.now() - state.timestamp > maxAge) {
       localStorage.removeItem(AUTH_STATE_KEY);
       return null;

@@ -2,7 +2,7 @@
 <script>
   import { API_URL } from '../config';
   import { userStore } from '../stores/userStore';
-  import { authFetch, getCsrfToken, updateCsrfTokens } from '../stores/authService';
+  import { authFetch, getCsrfToken, getCsrfState, updateCsrfData } from '../stores/authService';
 
   let showDebug = false;
   let debugInfo = {};
@@ -22,8 +22,8 @@
   function checkAdminStatus() {
     debugInfo = {};
 
-    // Update CSRF tokens
-    updateCsrfTokens();
+    // Update CSRF tokens and state
+    updateCsrfData();
 
     // Get user ID and type
     if (user) {
@@ -46,10 +46,11 @@
 
       debugInfo.cookies = cookies;
 
-      // Add CSRF tokens specifically
-      debugInfo.csrfTokens = {
+      // Add CSRF tokens and state specifically
+      debugInfo.csrfData = {
         access: getCsrfToken('access'),
-        refresh: getCsrfToken('refresh')
+        refresh: getCsrfToken('refresh'),
+        state: getCsrfState()
       };
     } catch (error) {
       debugInfo.cookieError = error.message;
@@ -71,9 +72,14 @@
         // Add appropriate CSRF token for the endpoint
         const tokenType = endpoint === '/refresh' ? 'refresh' : 'access';
         const csrfToken = getCsrfToken(tokenType);
+        const csrfState = getCsrfState();
 
         if (csrfToken) {
           options.headers['X-CSRF-TOKEN'] = csrfToken;
+        }
+
+        if (csrfState) {
+          options.headers['X-CSRF-STATE'] = csrfState;
         }
 
         options.body = JSON.stringify(data);
@@ -86,7 +92,8 @@
         statusText: response.statusText,
         ok: response.ok,
         headers: {},
-        csrfToken: endpoint === '/refresh' ? getCsrfToken('refresh') : getCsrfToken('access')
+        csrfToken: endpoint === '/refresh' ? getCsrfToken('refresh') : getCsrfToken('access'),
+        csrfState: getCsrfState()
       };
 
       // Save headers for analysis
@@ -112,13 +119,14 @@
   async function checkEndpoints() {
     debugInfo.endpoints = {};
 
-    // Update CSRF tokens before testing
-    updateCsrfTokens();
+    // Update CSRF tokens and state before testing
+    updateCsrfData();
 
-    // Show current CSRF tokens
-    debugInfo.currentCsrfTokens = {
+    // Show current CSRF tokens and state
+    debugInfo.currentCsrfData = {
       access: getCsrfToken('access'),
-      refresh: getCsrfToken('refresh')
+      refresh: getCsrfToken('refresh'),
+      state: getCsrfState()
     };
 
     // Check user endpoint
@@ -168,9 +176,9 @@
         <h5>All Cookies</h5>
         <pre>{JSON.stringify(debugInfo.cookies, null, 2)}</pre>
 
-        {#if debugInfo.csrfTokens}
-          <h5>CSRF Tokens</h5>
-          <pre>{JSON.stringify(debugInfo.csrfTokens, null, 2)}</pre>
+        {#if debugInfo.csrfData}
+          <h5>CSRF Data</h5>
+          <pre>{JSON.stringify(debugInfo.csrfData, null, 2)}</pre>
         {/if}
       {:else if debugInfo.cookieError}
         <p class="error">{debugInfo.cookieError}</p>
@@ -184,9 +192,9 @@
       <button class="debug-btn" on:click={checkEndpoints}>Test Endpoints</button>
 
       {#if debugInfo.endpoints}
-        {#if debugInfo.currentCsrfTokens}
-          <h5>Current CSRF Tokens</h5>
-          <pre>{JSON.stringify(debugInfo.currentCsrfTokens, null, 2)}</pre>
+        {#if debugInfo.currentCsrfData}
+          <h5>Current CSRF Data</h5>
+          <pre>{JSON.stringify(debugInfo.currentCsrfData, null, 2)}</pre>
         {/if}
 
         <div class="endpoints-result">

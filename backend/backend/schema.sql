@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS posts (
     FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- В schema.sql добавляем колонку для хранения данных изображения
+-- Таблица изображений
 CREATE TABLE IF NOT EXISTS images (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     filename TEXT NOT NULL,
@@ -77,11 +77,46 @@ CREATE TABLE IF NOT EXISTS user_status (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Добавить в schema.sql
+-- Таблица черного списка токенов
 CREATE TABLE IF NOT EXISTS token_blacklist (
     jti TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,
     blacklisted_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Создание индексов для таблицы черного списка токенов
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_user_id ON token_blacklist(user_id);
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires ON token_blacklist(expires_at);
+
+-- Таблица сессий пользователей
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    session_key TEXT NOT NULL,
+    csrf_state TEXT,
+    state TEXT DEFAULT 'active',
+    last_activity TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    -- Дополнительные колонки для безопасности
+    device_fingerprint TEXT,
+    request_counter INTEGER DEFAULT 0,
+    last_counter_update TEXT,
+    ip_network_hash TEXT,
+    activity_times TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Индексы для таблицы сессий
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_session_key ON user_sessions(session_key);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
+
+-- Таблица миграций
+CREATE TABLE IF NOT EXISTS migrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    applied_at TEXT NOT NULL
 );
