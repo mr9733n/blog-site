@@ -235,12 +235,18 @@ class SessionManager:
             device_fingerprint (str): The fingerprint to validate
 
         Returns:
-            bool: True if fingerprints match (or either is None), False otherwise
+            bool: True if fingerprints match, False otherwise
         """
         try:
             # Skip validation if fingerprint column doesn't exist
             if not SessionManager.ensure_column_exists('device_fingerprint'):
-                return True
+                current_app.logger.warning("Device fingerprint column doesn't exist")
+                return False  # Fail closed instead of open
+
+            # Skip validation if either input is None/empty
+            if not session_key or not device_fingerprint:
+                current_app.logger.warning("Missing session key or device fingerprint")
+                return False  # Fail closed instead of open
 
             session = query_db(
                 'SELECT device_fingerprint FROM user_sessions WHERE session_key = ?',
@@ -249,21 +255,23 @@ class SessionManager:
             )
 
             if not session:
+                current_app.logger.warning(f"Session not found: {session_key[:8]}")
                 return False
 
-            # Fix: Use dictionary-style indexing instead of .get() method
+            # Get stored fingerprint from session
             stored_fingerprint = session['device_fingerprint'] if 'device_fingerprint' in session else None
 
-            # If either fingerprint is None, allow the session (backward compatibility)
-            if stored_fingerprint is None or device_fingerprint is None:
-                return True
+            # If stored fingerprint is None, this is likely an old session
+            if stored_fingerprint is None:
+                current_app.logger.warning(f"No fingerprint stored for session: {session_key[:8]}")
+                return False  # Fail closed instead of open
 
             # Compare fingerprints
             return stored_fingerprint == device_fingerprint
         except Exception as e:
             current_app.logger.error(f"Error validating fingerprint: {e}")
-            # Fail open for this security feature (better UX with some security reduction)
-            return True
+            # Fail closed for better security
+            return False
 
     @staticmethod
     def check_session_valid(session_key, device_fingerprint=None):

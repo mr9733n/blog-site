@@ -11,12 +11,15 @@ import { authFetch } from '../stores/authService';
  */
 export async function checkAuth(redirectTo = '/login') {
   try {
-    // This will automatically trigger token refresh if needed
-    await authFetch('/api/me');
-    return true;
+    // Пытаемся получить текущие данные пользователя, что вызовет обновление токена при необходимости
+    const response = await fetch('/api/me', {
+      credentials: 'include',
+      cache: 'no-store'
+    });
+
+    return response.ok;
   } catch (err) {
-    console.warn('Authentication check failed:', err.message);
-    navigate(redirectTo, { replace: true });
+    console.warn('Auth check failed:', err);
     return false;
   }
 }
@@ -32,12 +35,14 @@ export function isAdmin(user) {
   // Handle both string and number IDs
   if (!user || user.id === undefined) return false;
 
-  // Convert both to strings for comparison (handles both number and string IDs)
-  const userId = String(user.id);
-  const adminId = '1';
-
-  console.log(`Comparing user ID (${userId}) with admin ID (${adminId})`);
-  return userId === adminId;
+  try {
+    // Убедимся, что user.id всегда обрабатывается как строка для сравнения
+    const userId = String(user.id);
+    return userId === '1'; // Администратор имеет ID=1
+  } catch (error) {
+    console.error('Error in isAdmin check:', error);
+    return false;
+  }
 }
 
 /**
@@ -49,9 +54,17 @@ export function isAdmin(user) {
 export function canEdit(user, authorId) {
   if (!user) return false;
 
-  // Admin can edit anything
-  if (isAdmin(user)) return true;
+  try {
+    // Сначала проверяем на права администратора
+    if (isAdmin(user)) return true;
 
-  // Users can edit their own content
-  return String(user.id) === String(authorId);
+    // Затем проверяем, является ли пользователь автором
+    const userId = String(user.id);
+    const contentAuthorId = String(authorId);
+
+    return userId === contentAuthorId;
+  } catch (error) {
+    console.error('Error in canEdit check:', error);
+    return false;
+  }
 }

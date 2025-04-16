@@ -2,7 +2,7 @@
 from flask import jsonify, current_app
 
 from backend.models.token_blacklist import TokenBlacklist
-
+from backend.auth.middlewares import check_if_token_revoked
 
 def setup_jwt_handlers(jwt):
     """
@@ -27,9 +27,7 @@ def setup_jwt_handlers(jwt):
     @jwt.token_in_blocklist_loader
     def check_if_token_is_revoked(jwt_header, jwt_payload):
         """Check if token is blacklisted"""
-        jti = jwt_payload.get('jti')
-        user_id = jwt_payload.get('sub')
-        return TokenBlacklist.is_token_blacklisted(jti, user_id)
+        return check_if_token_revoked(jwt_header, jwt_payload)
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):

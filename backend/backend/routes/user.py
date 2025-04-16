@@ -6,59 +6,22 @@ from backend.models import User
 from backend.models.token_blacklist import TokenBlacklist
 from backend.models.session import SessionManager  # New import
 from backend.models.security import SecurityMonitor  # New import
+from backend.services.security_validator import SecurityValidator
 
-user_bp = Blueprint('user', __name__)
+user_bp = Blueprint('user', __name__, url_prefix='/user')
 
 
 @user_bp.route('/update', methods=['PUT'])
 @jwt_required()
 def update_user_profile():
+    # Use centralized security validator for sensitive operations
+    is_valid, error_response = SecurityValidator.validate_sensitive_operation()
+
+    if not is_valid:
+        return error_response
+
     current_user_id = get_jwt_identity()
     user_id = int(current_user_id)
-
-    # Get current token for session validation
-    current_token = get_jwt()
-    session_key = current_token.get('session_key')
-
-    # Get device fingerprint
-    device_fingerprint = request.headers.get('X-Device-Fingerprint')
-
-    # Validate session key for extra security - CHANGED: Use SessionManager
-    if session_key and not SessionManager.check_session_valid(session_key):
-        return jsonify({"msg": "Недействительная сессия"}), 401
-
-    # Additional check: validate the session belongs to this user - CHANGED: Use SessionManager
-    if session_key and not SessionManager.validate_session(session_key, user_id):
-        return jsonify({"msg": "Сессия не принадлежит текущему пользователю"}), 403
-
-    # Security check: verify device fingerprint
-    if session_key and device_fingerprint and not SessionManager.validate_fingerprint(session_key, device_fingerprint):
-        current_app.logger.warning(f"Profile update blocked: fingerprint mismatch for user {user_id}")
-        return jsonify({"msg": "Обнаружено несоответствие устройства. Пожалуйста, войдите в систему снова."}), 403
-
-    # Check for network changes and suspicious activity patterns
-    if session_key:
-        client_ip = request.remote_addr
-        # Get network hash
-        ip_network_hash = SecurityMonitor.get_ip_network_hash(client_ip)
-
-        if ip_network_hash:
-            # Check for network changes
-            _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
-            if network_changed:
-                current_app.logger.warning(f"Profile update - network change detected for user {user_id}")
-
-            # Check activity patterns
-            _, suspicious_pattern = SecurityMonitor.track_activity_pattern(session_key)
-            if suspicious_pattern:
-                current_app.logger.warning(f"Profile update - suspicious activity pattern for user {user_id}")
-
-            # If either security check fails for this sensitive operation, require re-auth
-            if network_changed or suspicious_pattern:
-                return jsonify({
-                    "msg": "Обнаружена подозрительная активность. Пожалуйста, войдите в систему снова.",
-                    "code": "SECURITY_REAUTH_REQUIRED"
-                }), 403
 
     try:
         data = request.get_json()
