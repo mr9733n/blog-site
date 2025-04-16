@@ -112,15 +112,17 @@ export async function initAuth() {
 
 /**
  * Helper function for authenticated requests
- * With cookie-based auth, we don't need to manually add tokens
+ * With cookie-based auth, properly handling CSRF tokens
  *
  * @param {string} url - API URL to fetch
  * @param {Object} options - Fetch options
  * @returns {Promise<Response>} - Fetch response
  */
 export async function authFetch(url, options = {}) {
+  console.log(`🔐 Auth fetch for ${url}`);
+
   // Make sure we have the latest CSRF tokens and state
-  updateCsrfData();
+  const { access: csrfToken, refresh: refreshToken, state: csrfState } = updateCsrfData();
 
   // Include credentials to ensure cookies are sent
   const fetchOptions = {
@@ -142,22 +144,31 @@ export async function authFetch(url, options = {}) {
   }
 
   // Add the appropriate CSRF token and state based on the endpoint
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)) {
-    const csrfState = getCsrfState();
+  if (options.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)) {
+    console.log(`Adding CSRF headers for ${options.method} request to ${url}`);
 
     // Add CSRF state to all protected requests if available
     if (csrfState) {
+      console.log(`Adding CSRF state: ${csrfState.substring(0, 8)}...`);
       fetchOptions.headers['X-CSRF-STATE'] = csrfState;
+    } else {
+      console.warn('No CSRF state available for protected request');
     }
 
     // Use refresh token for refresh endpoint
     if (url.endsWith('/refresh')) {
-      if (csrfData.refresh) {
-        fetchOptions.headers['X-CSRF-TOKEN'] = csrfData.refresh;
+      if (refreshToken) {
+        console.log(`Adding refresh CSRF token: ${refreshToken.substring(0, 8)}...`);
+        fetchOptions.headers['X-CSRF-TOKEN'] = refreshToken;
+      } else {
+        console.warn('No refresh CSRF token available for refresh request');
       }
-    } else if (csrfData.access) {
+    } else if (csrfToken) {
       // Use access token for all other endpoints
-      fetchOptions.headers['X-CSRF-TOKEN'] = csrfData.access;
+      console.log(`Adding access CSRF token: ${csrfToken.substring(0, 8)}...`);
+      fetchOptions.headers['X-CSRF-TOKEN'] = csrfToken;
+    } else {
+      console.warn('No access CSRF token available for protected request');
     }
   }
 
@@ -165,22 +176,32 @@ export async function authFetch(url, options = {}) {
     // Try the fetch with current auth cookie
     const response = await fetch(url, fetchOptions);
 
+    // Проверяем заголовки ответа на наличие новых CSRF токенов
+    const responseHeaders = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    console.log('Response headers:', responseHeaders);
+
     // Update CSRF tokens if provided in response headers
     const newCsrfToken = response.headers.get('X-CSRF-TOKEN');
     if (newCsrfToken) {
+      console.log('Received new CSRF token in response');
       // We can't know which token was updated, so update both from cookies
       updateCsrfData();
     }
 
     // Handle auth errors - if we get a 401 or 403, try to refresh token once
     if (response.status === 401 || response.status === 403) {
-      console.log('⏳ Token expired. Attempting refresh...');
+      console.log(`⏳ Auth error (${response.status}) for ${url}. Attempting refresh...`);
 
       // Try to refresh the token first
       const refreshSuccess = await refreshToken();
 
       if (!refreshSuccess) {
-        // Only check inactivity if refresh failed
+        console.warn('⚠️ Refresh failed');
+
+        // Check for inactivity
         const now = Date.now();
         const lastUserActivity = getLastUserActivity();
         const inactiveTime = now - lastUserActivity;
@@ -191,12 +212,29 @@ export async function authFetch(url, options = {}) {
           throw new Error('Session ended due to inactivity.');
         }
 
-        console.warn('⚠️ Refresh failed. Logging out.');
+        console.warn('⚠️ Logging out due to auth failure after refresh attempt');
         await logout(true);
         throw new Error('Session expired. Please log in again.');
       }
 
-      // Retry the original request with the new token (cookie)
+      // After successful token refresh, update the CSRF tokens again
+      const { access: newAccessToken, refresh: newRefreshToken, state: newCsrfState } = updateCsrfData();
+
+      // Update headers with new CSRF data
+      if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)) {
+        if (newCsrfState) {
+          fetchOptions.headers['X-CSRF-STATE'] = newCsrfState;
+        }
+
+        if (url.endsWith('/refresh') && newRefreshToken) {
+          fetchOptions.headers['X-CSRF-TOKEN'] = newRefreshToken;
+        } else if (newAccessToken) {
+          fetchOptions.headers['X-CSRF-TOKEN'] = newAccessToken;
+        }
+      }
+
+      console.log('✅ Retrying request after successful token refresh');
+      // Retry the original request with the new tokens
       return fetch(url, fetchOptions);
     }
 
@@ -264,23 +302,30 @@ export async function refreshToken() {
   if (now - lastRefreshAttempt < MIN_REFRESH_INTERVAL) {
     console.log('🔄 Token refresh throttled. Last attempt:', new Date(lastRefreshAttempt).toISOString());
 
-    // Fixed: Using a proper way to check if token refresh is in progress
-    return new Promise(resolve => {
-      // Check if we're already refreshing by using a proper subscription
-      let isRefreshing = false;
+    // Проверяем, не выполняется ли уже обновление
+    const isRefreshing = await new Promise(resolve => {
       const unsubscribe = tokenRefreshLoading.subscribe(value => {
-        isRefreshing = value;
+        resolve(value);
+        unsubscribe();
       });
-
-      const checkInterval = setInterval(() => {
-        if (!isRefreshing) {
-          clearInterval(checkInterval);
-          unsubscribe(); // Clean up the subscription
-          // Check if we're authenticated after the other refresh completed
-          resolve(isAuthenticated());
-        }
-      }, 100);
     });
+
+    if (isRefreshing) {
+      console.log('Another refresh is already in progress, waiting for it to complete');
+
+      return new Promise(resolve => {
+        const interval = setInterval(() => {
+          tokenRefreshLoading.subscribe(value => {
+            if (!value) { // когда обновление завершено
+              clearInterval(interval);
+              resolve(true); // Возвращаем true вместо вызова isAuthenticated()
+            }
+          })();
+        }, 100);
+      });
+    }
+
+    return true; // Возвращаем true, если обновление уже было недавно
   }
 
   lastRefreshAttempt = now;
@@ -297,26 +342,45 @@ export async function refreshToken() {
   }
 
   try {
-    // Use proper store value setting - set a boolean value
+    // Set loading state
     tokenRefreshLoading.set(true);
 
     // Get device fingerprint for the request
     const deviceFingerprint = await getDeviceFingerprint();
 
+    // Используем явные заголовки для рефреша
+    const headers = {
+      'X-CSRF-TOKEN': refreshCsrfToken,
+      'X-Device-Fingerprint': deviceFingerprint
+    };
+
+    // Добавляем CSRF-STATE, если он доступен
+    if (csrfState) {
+      headers['X-CSRF-STATE'] = csrfState;
+    }
+
     const response = await fetch(`${API_URL}/refresh`, {
       method: 'POST',
       credentials: 'include',
-      headers: {
-        'X-CSRF-TOKEN': refreshCsrfToken,
-        'X-Device-Fingerprint': deviceFingerprint,
-        ...(csrfState ? { 'X-CSRF-STATE': csrfState } : {})
-      },
+      headers: headers,
       cache: 'no-store' // Prevent caching
     });
 
+    // Если ответ не ok, логируем ошибку подробнее
     if (!response.ok) {
       console.error('Token refresh failed with status:', response.status);
-      throw new Error('Failed to refresh token');
+      console.error('Response headers:',
+        Array.from(response.headers.entries()).reduce((obj, [key, val]) => {
+          obj[key] = val;
+          return obj;
+        }, {})
+      );
+
+      // Попытка получить текст ошибки
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+
+      throw new Error(`Failed to refresh token: ${response.status} ${response.statusText}`);
     }
 
     // Update CSRF tokens after refresh

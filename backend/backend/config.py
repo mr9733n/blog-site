@@ -18,7 +18,9 @@ class Config:
 
     JWT_TOKEN_LOCATION = 'cookies'
     JWT_COOKIE_CSRF_PROTECT = True
+    JWT_CSRF_IN_COOKIES = True
     JWT_CSRF_CHECK_FORM = False  # We'll handle CSRF token validation ourselves
+    JWT_ACCESS_CSRF_HEADER_NAME = "X-CSRF-TOKEN"
     JWT_ACCESS_COOKIE_PATH = '/api/'  # Restrict cookie access to /api/ paths
     JWT_REFRESH_COOKIE_PATH = '/api/refresh'  # Restrict refresh cookie
     JWT_COOKIE_SAMESITE = 'Strict'  # Helps prevent CSRF
