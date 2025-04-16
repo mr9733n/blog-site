@@ -1,10 +1,15 @@
 <script>
   import { onMount } from "svelte";
   import { navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { authFetch } from "../stores/authService";
+  import { canEdit } from "../utils/authWrapper";
   import { renderMarkdown } from "../utils/markdown";
+  import { formatFileSize } from "../utils/formatUtils";
+  import { validatePostTitle, validatePostContent, validateImageFile } from "../utils/validation";
 
-  export let id; // ID поста из параметра маршрута
+  export let id; // Post ID from route parameter
 
   let title = "";
   let content = "";
@@ -21,64 +26,72 @@
     user = value;
   });
 
-	onMount(async () => {
-	  // Проверка авторизации
-	  if (!user) {
-		navigate("/login", { replace: true });
-		return;
-	  }
-
-	  loading = true;
-
-	  try {
-		// Загрузка информации о посте
-		post = await api.getPost(id);
-
-		// Check if user is admin (ID = 1)
-		const isAdmin = user.id === '1';
-
-		// Проверка прав на редактирование (now supports admin)
-		if (!isAdmin && post.author_id !== parseInt(user.id)) {
-		  navigate(`/post/${id}`, { replace: true });
-		  return;
-		}
-
-		// Заполнение полей формы
-		title = post.title;
-		content = post.content;
-		loading = false;
-	  } catch (err) {
-		error = err.message;
-		loading = false;
-	  }
-	});
-
-  async function handleSubmit() {
-    error = "";
+  onMount(async () => {
     loading = true;
 
-    // Валидация формы
-    if (!title.trim()) {
-      error = "Заголовок не может быть пустым";
-      loading = false;
-      return;
-    }
-
-    if (!content.trim()) {
-      error = "Содержание поста не может быть пустым";
-      loading = false;
-      return;
-    }
-
     try {
-      await api.updatePost(id, title, content);
-      navigate(`/post/${id}`, { replace: true });
+      if (!id) {
+        error = "ID поста не указан";
+        loading = false;
+        return;
+      }
+      // Try to verify authentication (will trigger token refresh if needed)
+      await authFetch('/api/me');
+
+      if (!user) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      // Load the post information
+      post = await api.posts.getPost(id);
+
+      // Check if user has edit permissions
+      if (!canEdit(user, post.author_id)) {
+        navigate(`/post/${id}`, { replace: true });
+        return;
+      }
+
+      // Fill form with post data
+      title = post.title;
+      content = post.content;
     } catch (err) {
       error = err.message;
+    } finally {
       loading = false;
     }
+  });
+
+async function handleSubmit() {
+  error = "";
+  loading = true;
+
+  // Валидация заголовка
+  const titleValidation = validatePostTitle(title);
+  if (!titleValidation.valid) {
+    error = titleValidation.error;
+    loading = false;
+    return;
   }
 
+  // Валидация содержимого
+  const contentValidation = validatePostContent(content);
+  if (!contentValidation.valid) {
+    error = contentValidation.error;
+    loading = false;
+    return;
+  }
+
+  try {
+    await api.posts.updatePost(id, title, content);
+    navigate(`/post/${id}`, { replace: true });
+  } catch (err) {
+    error = err.message;
+    loading = false;
+  }
+}
+
+  // Rest of the component methods remain unchanged
   function togglePreview() {
     previewMode = !previewMode;
     if (previewMode) {
@@ -113,11 +126,11 @@
       case 'link':
         insertion = `[${selectedText || 'текст ссылки'}](http://example.com)`;
         break;
-    case 'image':
+      case 'image':
         if (uploadedImages.length > 0) {
             // Use the most recently uploaded image
             const lastImage = uploadedImages[uploadedImages.length - 1];
-            // Вместо обертывания изображения в ссылку, просто вставляем само изображение
+            // Insert image markdown
             insertion = `![${selectedText || lastImage.name}](${lastImage.url})`;
         } else {
             // No uploaded images, show error message
@@ -162,15 +175,10 @@ async function handleFileSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  // Проверка типа файла
-  if (!file.type.startsWith('image/')) {
-    error = "Выбранный файл не является изображением";
-    return;
-  }
-
-  // Проверка размера файла
-  if (file.size > 5 * 1024 * 1024) {
-    error = "Размер файла не должен превышать 5MB";
+  // Используем валидацию изображения
+  const imageValidation = validateImageFile(file);
+  if (!imageValidation.valid) {
+    error = imageValidation.error;
     return;
   }
 
@@ -179,31 +187,33 @@ async function handleFileSelect(event) {
   imageUploadProgress = 0;
 
   try {
-    // Вместо создания локального blob-URL, загружаем файл на сервер
+    // Имитация прогресса загрузки
     const simulateProgress = setInterval(() => {
       imageUploadProgress += 10;
       if (imageUploadProgress >= 90) clearInterval(simulateProgress);
     }, 100);
 
     // Загрузка файла на сервер через API
-    const response = await api.uploadImage(file);
+    const response = await api.images.uploadImage(file);
     clearInterval(simulateProgress);
     imageUploadProgress = 100;
 
     // Получаем URL изображения с сервера
     const imageUrl = response.image.url_path;
+    const imageId = response.image.id;
 
     // Добавляем в список загруженных изображений
     uploadedImages = [...uploadedImages, {
       name: file.filename || file.name,
       url: imageUrl,
-      size: formatFileSize(file.size),
-      id: response.image.id
+      size: formatFileSize(file.size), // Используем функцию из утилит
+      id: imageId
     }];
 
-    // Вставляем URL в markdown
-    const insertion = `![${file.name}](${imageUrl})`;
-    // ...код для вставки в текстовую область...
+    // Привязываем изображение к редактируемому посту
+    if (id && imageId) {
+      await api.images.attachImageToPost(imageId, id);
+    }
 
     // Сбрасываем индикатор прогресса
     setTimeout(() => {
@@ -215,11 +225,6 @@ async function handleFileSelect(event) {
   }
 }
 
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
 </script>
 
 <div class="edit-post">

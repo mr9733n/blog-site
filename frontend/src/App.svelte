@@ -11,41 +11,56 @@
   import EditPost from "./components/EditPost.svelte";
   import Profile from "./components/Profile.svelte";
   import AuthGuard from "./components/AuthGuard.svelte";
-  import { userStore, updateUserActivity, logout } from './stores/userStore';
+  import { updateUserActivity, userStore } from './stores/userStore';
+  import { isAuthenticated, logout, initAuth } from './stores/authService';
+  import { isAdmin } from "./utils/authWrapper";
   import { onMount } from "svelte";
 
   export let url = "";
   let user;
   let menuOpen = false;
+  let darkMode = false;
+  let authChecking = false;
 
   userStore.subscribe(value => {
     user = value;
   });
 
-  // Обновляем активность при загрузке приложения
-  onMount(() => {
-    updateUserActivity();
+  function toggleDarkMode() {
+    darkMode = !darkMode;
+    document.body.classList.toggle('dark-mode', darkMode);
+    localStorage.setItem('darkMode', darkMode);
+  }
 
-    // Отслеживаем навигацию браузера (кнопки назад/вперед)
-    window.addEventListener('popstate', updateUserActivity);
+  // Initial app setup
+  onMount(async () => {
+    console.log("App.svelte: Mounting application");
 
-    // Отслеживаем когда пользователь возвращается на вкладку
-    window.addEventListener('focus', updateUserActivity);
+    // Setup activity tracking
+    window.addEventListener('click', updateUserActivity);
+    window.addEventListener('keypress', updateUserActivity);
+    window.addEventListener('touchstart', updateUserActivity);
+    window.addEventListener('scroll', updateUserActivity);
 
-    return () => {
-      window.removeEventListener('popstate', updateUserActivity);
-      window.removeEventListener('focus', updateUserActivity);
-    };
+    // Initialize authentication - this handles all the auth state restoration
+    await initAuth();
+
+    // Initialize dark mode from preferences
+    const savedDarkMode = localStorage.getItem('darkMode');
+    if (savedDarkMode) {
+      darkMode = savedDarkMode === 'true';
+      document.body.classList.toggle('dark-mode', darkMode);
+    }
   });
 
-  // Обработчик для клика по ссылкам
+  // Handle link clicks
   function handleLinkClick() {
     updateUserActivity();
     if (menuOpen) toggleMenu();
   }
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     navigate("/", { replace: true });
   }
 
@@ -56,13 +71,13 @@
 
 <Router {url}>
   <TokenRefreshIndicator />
-  <ImageViewer /> <!-- Добавляем компонент просмотра изображений -->
+  <ImageViewer />
 
   <nav>
     <div class="container nav-container">
       <div class="nav-left">
         <div class="brand">
-          <Link to="/" on:click={handleLinkClick}>Мой Блог</Link>
+          <Link to="/" on:click={handleLinkClick}>My Blog</Link>
         </div>
       </div>
 
@@ -72,47 +87,43 @@
 
       <div class="nav-right">
         <ul class="nav-links {menuOpen ? 'open' : ''}">
-          <li><Link to="/" on:click={handleLinkClick}>Главная</Link></li>
+          <li><Link to="/" on:click={handleLinkClick}>Home</Link></li>
           {#if user}
-            <li><Link to="/create" on:click={handleLinkClick}>Новый пост</Link></li>
-            <li><Link to="/profile" on:click={handleLinkClick}>Профиль</Link></li>
-            <li><button on:click={() => { handleLogout(); handleLinkClick(); }}>Выйти</button></li>
+            <li><Link to="/create" on:click={handleLinkClick}>New Post</Link></li>
+            <li><Link to="/profile" on:click={handleLinkClick}>Profile</Link></li>
+            <li><button on:click={() => { handleLogout(); handleLinkClick(); }}>Logout</button></li>
           {:else}
-            <li><Link to="/login" on:click={handleLinkClick}>Войти</Link></li>
-           <!-- TODO: Removed cuz unnecessary, signup can be provided from login page
-            <li><Link to="/register" on:click={handleLinkClick}>Регистрация</Link></li>
-           -->
+            <li><Link to="/login" on:click={handleLinkClick}>Login</Link></li>
           {/if}
         </ul>
-        <ThemeToggle />
+        <ThemeToggle on:toggle={toggleDarkMode} />
       </div>
     </div>
   </nav>
 
   <main>
     <div class="container">
-      <!-- Публичные маршруты - доступны всем -->
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/post/:id" let:params>
         <BlogPost id={params.id} />
       </Route>
-
-      <!-- Защищенные маршруты - только для авторизованных пользователей -->
-      <AuthGuard>
-        <Route path="/create" component={CreatePost} />
-        <Route path="/edit/:id" let:params>
-          <EditPost id={params.id} />
-        </Route>
-        <Route path="/profile" component={Profile} />
-      </AuthGuard>
+      <Route path="/profile">
+        <AuthGuard childComponent={Profile} />
+      </Route>
+      <Route path="/create">
+        <AuthGuard childComponent={CreatePost} />
+      </Route>
+      <Route path="/edit/:id" let:params>
+        <AuthGuard id={params.id} childComponent={EditPost} />
+      </Route>
     </div>
   </main>
 
   <footer>
     <div class="container">
-      <p>&copy; 2025 Мой Блог. Все права защищены.</p>
+      <p>&copy; 2025 My Blog. All rights reserved.</p>
     </div>
   </footer>
 </Router>

@@ -7,65 +7,88 @@
   let currentImageSrc = '';
   let modalElement;
   let clickHandler;
+  let closeButton;
 
-// Функция для открытия модального окна с изображением
-export function openImage(src) {
-  console.log('Opening image modal with source:', src);
-  currentImageSrc = src;
-  isModalOpen = true;
-}
+  // Функция для открытия модального окна с изображением
+  export function openImage(src) {
+    console.log('Opening image modal with source:', src);
+    currentImageSrc = src;
+    isModalOpen = true;
+
+    // Focus on close button for keyboard navigation after modal opens
+    setTimeout(() => {
+      if (closeButton) {
+        closeButton.focus();
+      }
+    }, 50);
+  }
 
   // Обработчик нажатия клавиши ESC
   function handleKeyDown(e) {
     if (e.key === 'Escape' && isModalOpen) {
-      isModalOpen = false;
+      closeModal();
     }
   }
 
-onMount(() => {
-  document.addEventListener('keydown', handleKeyDown);
-  window.openImageViewer = openImage;
-
-clickHandler = (e) => {
-  console.log('Click event detected on:', e.target);
-
-  // Проверка, если клик был по изображению
-  if (e.target && e.target.tagName === 'IMG') {
-    console.log('Image clicked:', e.target.src);
-    openImage(e.target.src);
-    e.preventDefault();
-    return;
-  }
-
-  // Проверка, если клик был по ссылке
-  if (e.target && e.target.tagName === 'A') {
-    // Проверяем, есть ли в href путь к изображению (по расширению)
-    const href = e.target.getAttribute('href');
-    if (href && (
-      href.endsWith('.jpg') || href.endsWith('.jpeg') ||
-      href.endsWith('.png') || href.endsWith('.gif') ||
-      href.endsWith('.webp') || href.startsWith('blob:')
-    )) {
-      console.log('Image link clicked:', href);
-      openImage(href);
+  // Обработчик для кнопки закрытия
+  function handleCloseKeyDown(e) {
+    // Handle Enter or Space key
+    if (e.key === 'Enter' || e.key === ' ') {
+      closeModal();
       e.preventDefault();
-      return;
     }
   }
-};
 
-  document.body.addEventListener('click', clickHandler);
-});
+  // Централизованная функция закрытия модального окна
+  function closeModal() {
+    isModalOpen = false;
+  }
 
-onDestroy(() => {
-  document.removeEventListener('keydown', handleKeyDown);
-  delete window.openImageViewer;
-  document.body.removeEventListener('click', clickHandler);
-});
+  onMount(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    window.openImageViewer = openImage;
+
+    clickHandler = (e) => {
+      console.log('Click event detected on:', e.target);
+
+      // Проверка, если клик был по изображению с классом clickable-image
+      if (e.target && e.target.tagName === 'IMG' && e.target.classList.contains('clickable-image')) {
+        console.log('Image clicked:', e.target.src);
+        openImage(e.target.src);
+        e.preventDefault();
+        return;
+      }
+
+      // Проверка, если клик был по ссылке
+      if (e.target && e.target.tagName === 'A') {
+        // Проверяем, есть ли в href путь к изображению (по расширению)
+        const href = e.target.getAttribute('href');
+        if (href && (
+          href.endsWith('.jpg') || href.endsWith('.jpeg') ||
+          href.endsWith('.png') || href.endsWith('.gif') ||
+          href.endsWith('.webp') || href.startsWith('blob:')
+        )) {
+          console.log('Image link clicked:', href);
+          openImage(href);
+          e.preventDefault();
+          return;
+        }
+      }
+    };
+
+    document.body.addEventListener('click', clickHandler);
+  });
+
+  onDestroy(() => {
+    document.removeEventListener('keydown', handleKeyDown);
+    delete window.openImageViewer;
+    document.body.removeEventListener('click', clickHandler);
+  });
+
   // Закрытие модального окна при клике вне изображения
   function handleModalClick(e) {
     if (e.target === modalElement) {
-      isModalOpen = false;
+      closeModal();
     }
   }
 </script>
@@ -76,9 +99,22 @@ onDestroy(() => {
     class="image-modal"
     bind:this={modalElement}
     on:click={handleModalClick}
+    on:keydown={handleKeyDown}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="image-viewer-title"
   >
     <div class="modal-content">
-      <span class="close-modal" on:click={() => isModalOpen = false}>&times;</span>
+      <span
+        class="close-modal"
+        on:click={closeModal}
+        on:keydown={handleCloseKeyDown}
+        tabindex="0"
+        role="button"
+        aria-label="Закрыть просмотр изображения"
+        bind:this={closeButton}
+      >&times;</span>
+      <h2 id="image-viewer-title" class="sr-only">Просмотр изображения</h2>
       <img src={currentImageSrc} alt="Увеличенное изображение">
     </div>
   </div>
@@ -121,8 +157,8 @@ onDestroy(() => {
 
   .close-modal {
     position: absolute;
-    top: -40px;
-    right: 0;
+    top: -20px;
+    right: 2px;
     color: #f1f1f1;
     font-size: 40px;
     font-weight: bold;
@@ -130,8 +166,23 @@ onDestroy(() => {
     transition: color 0.2s;
   }
 
-  .close-modal:hover {
+  .close-modal:hover,
+  .close-modal:focus {
     color: var(--accent-color, #007bff);
+    outline: none;
+  }
+
+  /* Screen reader only class */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
   }
 
   /* Стили для адаптивных экранов */
@@ -141,7 +192,6 @@ onDestroy(() => {
     }
 
     .close-modal {
-      top: -35px;
       right: 0;
       font-size: 35px;
     }

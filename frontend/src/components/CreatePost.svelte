@@ -1,8 +1,13 @@
 <script>
   import { onMount } from "svelte";
   import { navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  // Update import paths to use the new structure
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { authFetch } from "../stores/authService";
   import { renderMarkdown } from "../utils/markdown";
+  import { formatFileSize } from "../utils/formatUtils";
+  import { validatePostTitle, validatePostContent, validateImageFile } from "../utils/validation";
 
   let title = "";
   let content = "";
@@ -12,44 +17,60 @@
   let renderedPreview = "";
   let imageUploadProgress = null;
   let uploadedImages = [];
+  let user = null;
 
-  // Проверка авторизации
-  onMount(() => {
-    const unsubscribe = userStore.subscribe(user => {
-      if (!user) {
-        navigate("/login", { replace: true });
-      }
-    });
-
-    return () => unsubscribe();
+  userStore.subscribe(value => {
+    user = value;
   });
 
-  async function handleSubmit() {
-    error = "";
-    loading = true;
-
-    // Валидация формы
-    if (!title.trim()) {
-      error = "Заголовок не может быть пустым";
-      loading = false;
-      return;
-    }
-
-    if (!content.trim()) {
-      error = "Содержание поста не может быть пустым";
-      loading = false;
-      return;
-    }
-
+  // Improved authentication check that uses authFetch to trigger token refresh if needed
+  onMount(async () => {
     try {
-      await api.createPost(title, content);
-      navigate("/", { replace: true });
+      // This will trigger a token refresh if needed
+      await authFetch('/api/me');
     } catch (err) {
-      error = err.message;
-      loading = false;
+      // If authFetch fails, it means the user needs to log in again
+      console.warn('Authentication failed - redirecting to login');
+      navigate("/login", { replace: true });
+      return;
     }
+
+    // If we get here, the authentication is valid (token refreshed if needed)
+    if (!user) {
+      navigate("/login", { replace: true });
+    }
+  });
+
+async function handleSubmit() {
+  error = "";
+  loading = true;
+
+  // Валидация заголовка
+  const titleValidation = validatePostTitle(title);
+  if (!titleValidation.valid) {
+    error = titleValidation.error;
+    loading = false;
+    return;
   }
 
+  // Валидация содержимого
+  const contentValidation = validatePostContent(content);
+  if (!contentValidation.valid) {
+    error = contentValidation.error;
+    loading = false;
+    return;
+  }
+
+  try {
+    const result = await api.posts.createPost(title, content);
+    navigate("/", { replace: true });
+  } catch (err) {
+    error = err.message;
+    loading = false;
+  }
+}
+
+  // Rest of the component remains the same...
   function togglePreview() {
     previewMode = !previewMode;
     if (previewMode) {
@@ -88,7 +109,6 @@
         if (uploadedImages.length > 0) {
             // Use the most recently uploaded image
             const lastImage = uploadedImages[uploadedImages.length - 1];
-            // Вместо обертывания изображения в ссылку, просто вставляем само изображение
             insertion = `![${selectedText || lastImage.name}](${lastImage.url})`;
         } else {
             // No uploaded images, show error message
@@ -129,70 +149,62 @@
   }
 
   // Function to handle file selection
-async function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+  async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-  // Проверка типа файла
-  if (!file.type.startsWith('image/')) {
-    error = "Выбранный файл не является изображением";
-    return;
-  }
+    // Проверка типа файла
+    if (!file.type.startsWith('image/')) {
+      error = "Выбранный файл не является изображением";
+      return;
+    }
 
-  // Проверка размера файла
-  if (file.size > 5 * 1024 * 1024) {
-    error = "Размер файла не должен превышать 5MB";
-    return;
-  }
+    // Проверка размера файла
+    if (file.size > 5 * 1024 * 1024) {
+      error = "Размер файла не должен превышать 5MB";
+      return;
+    }
 
-  // Очистка ошибок и показ индикатора загрузки
-  error = "";
-  imageUploadProgress = 0;
+    // Очистка ошибок и показ индикатора загрузки
+    error = "";
+    imageUploadProgress = 0;
 
-  try {
-    // Вместо создания локального blob-URL, загружаем файл на сервер
-    const simulateProgress = setInterval(() => {
-      imageUploadProgress += 10;
-      if (imageUploadProgress >= 90) clearInterval(simulateProgress);
-    }, 100);
+    try {
+      // Вместо создания локального blob-URL, загружаем файл на сервер
+      const simulateProgress = setInterval(() => {
+        imageUploadProgress += 10;
+        if (imageUploadProgress >= 90) clearInterval(simulateProgress);
+      }, 100);
 
-    // Загрузка файла на сервер через API
-    const response = await api.uploadImage(file);
-    clearInterval(simulateProgress);
-    imageUploadProgress = 100;
+      // Загрузка файла на сервер через API
+      const response = await api.images.uploadImage(file);
+      clearInterval(simulateProgress);
+      imageUploadProgress = 100;
 
-    // Получаем URL изображения с сервера
-    const imageUrl = response.image.url_path;
+      // Получаем URL изображения с сервера
+      const imageUrl = response.image.url_path;
 
-    // Добавляем в список загруженных изображений
-    uploadedImages = [...uploadedImages, {
-      name: file.filename || file.name,
-      url: imageUrl,
-      size: formatFileSize(file.size),
-      id: response.image.id
-    }];
+      // Добавляем в список загруженных изображений
+      uploadedImages = [...uploadedImages, {
+        name: file.filename || file.name,
+        url: imageUrl,
+        size: formatFileSize(file.size),
+        id: response.image.id
+      }];
 
-    // Вставляем URL в markdown
-    const insertion = `![${file.name}](${imageUrl})`;
-    // ...код для вставки в текстовую область...
-
-    // Сбрасываем индикатор прогресса
-    setTimeout(() => {
+      // Сбрасываем индикатор прогресса
+      setTimeout(() => {
+        imageUploadProgress = null;
+      }, 500);
+    } catch (err) {
+      error = "Ошибка загрузки изображения: " + err.message;
       imageUploadProgress = null;
-    }, 500);
-  } catch (err) {
-    error = "Ошибка загрузки изображения: " + err.message;
-    imageUploadProgress = null;
+    }
   }
-}
 
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
 </script>
 
+<!-- Rest of the component's HTML and style remains the same -->
 <div class="create-post">
   <div class="form-container">
     <h1>Создание нового поста</h1>
@@ -240,6 +252,7 @@ async function handleFileSelect(event) {
               <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
           </button>
+
           <button type="button" on:click={() => insertMarkdown('code')} title="Код">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="16 18 22 12 16 6"></polyline>
@@ -300,7 +313,6 @@ async function handleFileSelect(event) {
               style="display: none;"
             />
           </div>
-
           <button type="button" class="preview-toggle" on:click={togglePreview}>
             {previewMode ? 'Редактировать' : 'Предпросмотр'}
           </button>
@@ -474,7 +486,6 @@ async function handleFileSelect(event) {
     color: var(--text-primary);
     cursor: pointer;
     font-size: 0.9rem;
-    height: 32px;
   }
 
   .upload-btn:hover {

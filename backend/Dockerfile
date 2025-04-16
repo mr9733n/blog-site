@@ -24,18 +24,16 @@ FROM python:3.12-alpine
 # Копируем только необходимые файлы
 WORKDIR /app
 COPY --from=builder /install /usr/local
-
 # Выборочное копирование файлов
-COPY app.py .
-COPY config.py .
-COPY models.py .
-COPY schema.sql .
+COPY . /app/
 
+RUN pip install -e .
 # Устанавливаем переменные окружения
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/backend
 
 # Очищаем кэш и временные файлы
 RUN find . -type d -name "__pycache__" -exec rm -rf {} + \

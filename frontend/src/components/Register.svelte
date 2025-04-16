@@ -1,6 +1,8 @@
 <script>
   import { navigate } from "svelte-routing";
-  import { api } from "../stores/userStore";
+  import { login, register } from "../stores/authService";
+  // Импортируем функции валидации
+  import { validateUsername, validateEmail, validatePassword } from "../utils/validation";
 
   let username = "";
   let email = "";
@@ -9,39 +11,45 @@
   let error = "";
   let loading = false;
   let success = false;
+  let passwordStrength = 0; // Добавляем отслеживание силы пароля
 
   async function handleSubmit() {
     error = "";
     loading = true;
 
-    // Валидация полей
-    if (!username || !email || !password || !confirmPassword) {
-      error = "Пожалуйста, заполните все поля";
+    // Валидация полей с использованием новых функций
+    const usernameValidation = validateUsername(username);
+    if (!usernameValidation.valid) {
+      error = usernameValidation.error;
       loading = false;
       return;
     }
 
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.valid) {
+      error = emailValidation.error;
+      loading = false;
+      return;
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      error = passwordValidation.error;
+      loading = false;
+      return;
+    }
+
+    // Дополнительно сохраняем силу пароля для отображения
+    passwordStrength = passwordValidation.strength || 0;
+
+    // Проверка совпадения паролей
     if (password !== confirmPassword) {
       error = "Пароли не совпадают";
       loading = false;
       return;
     }
 
-    if (password.length < 6) {
-      error = "Пароль должен быть не менее 6 символов";
-      loading = false;
-      return;
-    }
-
-    // Проверка формата email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      error = "Некорректный формат email";
-      loading = false;
-      return;
-    }
-
-    const result = await api.register(username, email, password);
+    const result = await register(username, email, password);
 
     if (result.success) {
       success = true;
@@ -109,6 +117,33 @@
           minlength="6"
           autocomplete="new-password"
         />
+
+        <!-- Добавляем индикатор силы пароля, если пользователь ввел пароль -->
+        {#if password.length > 0}
+          <div class="password-strength">
+            <div class="strength-bar">
+              <div
+                class="strength-indicator"
+                style="width: {passwordStrength * 25}%; background-color: {
+                  passwordStrength <= 1 ? '#dc3545' :
+                  passwordStrength <= 2 ? '#ffc107' :
+                  passwordStrength <= 3 ? '#6c757d' : '#28a745'
+                }"
+              ></div>
+            </div>
+            <div class="strength-text">
+              {#if passwordStrength <= 1}
+                Слабый
+              {:else if passwordStrength <= 2}
+                Средний
+              {:else if passwordStrength <= 3}
+                Хороший
+              {:else}
+                Отличный
+              {/if}
+            </div>
+          </div>
+        {/if}
       </div>
 
       <div class="form-group">
@@ -143,7 +178,7 @@
   }
 
   .form-container {
-    background-color: #fff;
+    background-color: var(--bg-secondary);
     border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 2rem 3.5rem 2rem 2rem;
@@ -191,7 +226,7 @@
     width: 100%;
     padding: 0.75rem;
     font-size: 1rem;
-    border: 1px solid #ced4da;
+    border: 1px solid #aea4ae;
     border-radius: 4px;
   }
 
@@ -238,5 +273,30 @@
 
   .hidden {
     display: none;
+  }
+
+  /* Стили для индикатора силы пароля */
+  .password-strength {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .strength-bar {
+    height: 5px;
+    background-color: #e9ecef;
+    border-radius: 2px;
+    margin-bottom: 0.25rem;
+  }
+
+  .strength-indicator {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s, background-color 0.3s;
+  }
+
+  .strength-text {
+    text-align: right;
+    font-size: 0.8rem;
+    color: #6c757d;
   }
 </style>

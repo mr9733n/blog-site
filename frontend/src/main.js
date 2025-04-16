@@ -2,14 +2,15 @@ import App from './App.svelte';
 import { updateUserActivity } from './stores/userStore';
 import './global.css';
 
-// Глобальное отслеживание активности пользователя
+// Global user activity tracking
+// Note: App.svelte also sets these, but these serve as a fallback
 window.addEventListener('click', updateUserActivity);
 window.addEventListener('keypress', updateUserActivity);
+window.addEventListener('touchstart', updateUserActivity);
 
 const app = new App({
   target: document.body,
   props: {
-    // можно передать URL для маршрутизатора
     url: window.location.pathname
   }
 });

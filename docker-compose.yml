@@ -33,8 +33,10 @@ services:
     container_name: blog-nginx
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./ssl:/etc/nginx/ssl
     ports:
       - "36166:80"
+      - "36167:443"
     depends_on:
       - backend
       - frontend

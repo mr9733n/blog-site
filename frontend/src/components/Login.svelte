@@ -1,6 +1,9 @@
 <script>
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore } from "../stores/userStore";
+  import { userStore } from "../stores/userStore";
+  import { api } from "../stores/apiService";
+  import { login } from "../stores/authService";
+  import { validateUsername, validatePassword } from "../utils/validation";
 
   let username = "";
   let password = "";
@@ -16,13 +19,22 @@
     loading = true;
 
     // Проверка наличия небезопасных символов
-    if (hasSpecialChars) {
-      error = "Логин или пароль содержат недопустимые символы";
+    const usernameValidation = validateUsername(username);
+    const passwordValidation = validatePassword(password);
+
+    if (!usernameValidation.valid) {
+      error = usernameValidation.error;
       loading = false;
       return;
     }
 
-    const result = await api.login(username, password);
+    if (!passwordValidation.valid) {
+      error = passwordValidation.error;
+      loading = false;
+      return;
+    }
+
+    const result = await login(username, password);
 
     if (result.success) {
       navigate("/", { replace: true });
@@ -92,7 +104,7 @@
   }
 
   .login-form {
-    background-color: #fff;
+    background-color: var(--btn-secondary-bg);
     border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 2rem 3.5rem 2rem 2rem;
@@ -104,7 +116,7 @@
     margin-top: 0;
     margin-bottom: 1.5rem;
     text-align: center;
-    color: #333;
+    color: var(--text-primary);
     font-size: 1.8rem;
   }
 
@@ -135,14 +147,14 @@
     display: block;
     margin-bottom: 0.5rem;
     font-weight: bold;
-    color: #495057;
+    color: var(--text-primary);
   }
 
   input {
     width: 100%;
     padding: 0.75rem;
     font-size: 1rem;
-    border: 1px solid #ced4da;
+    border: 1px solid #aea4ae;
     border-radius: 4px;
   }
 
@@ -178,14 +190,5 @@
     text-align: center;
     color: #6c757d;
     font-size: 0.9rem;
-  }
-
-  .form-footer a {
-    color: #007bff;
-    text-decoration: none;
-  }
-
-  .form-footer a:hover {
-    text-decoration: underline;
   }
 </style>

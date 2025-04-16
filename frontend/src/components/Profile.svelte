@@ -1,9 +1,13 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { Link, navigate } from "svelte-routing";
-  import { api, userStore, tokenExpiration } from "../stores/userStore";
+  import { userStore, tokenExpiration } from "../stores/userStore";
+  import { formatDate, formatFileSize, maskEmail } from "../utils/formatUtils";
+  import { api } from "../stores/apiService";
+  import { checkAuth, isAdmin } from "../utils/authWrapper";
   import UserSettings from './UserSettings.svelte';
   import AdminUsers from './AdminUsers.svelte';
+  import DebugHelper from './DebugHelper.svelte';
 
   let user = null;
   let userInfo = null;
@@ -21,46 +25,64 @@
     user = value;
   });
 
-  onMount(async () => {
-    // Проверка авторизации
-    if (!user) {
-      navigate("/login", { replace: true });
-      return;
-    }
+	onMount(async () => {
+	  // Check authentication first (triggers token refresh if needed)
+	  if (!(await checkAuth())) return;
 
-    loading = true;
+	  loading = true;
 
-    try {
-      // Загрузка информации о текущем пользователе
-      userInfo = await api.getCurrentUser();
+	  try {
+		await loadProfileData();
+	  } catch (err) {
+		error = err.message;
+	  } finally {
+		loading = false;
+	  }
 
-      // Загрузка постов пользователя
-      userPosts = await api.getUserPosts(userInfo.id);
+	  // Добавляем обработчик обновления профиля
+	  const handleProfileUpdated = async () => {
+		console.log("Reloading profile data after update");
+		try {
+		  loading = true;
+		  await loadProfileData();
+		} catch (err) {
+		  error = err.message;
+		} finally {
+		  loading = false;
+		}
+	  };
 
-      loading = false;
+	  window.addEventListener('profile-updated', handleProfileUpdated);
 
-      if (user) {
-        await loadSavedPosts();
-      }
-
-    } catch (err) {
-      error = err.message;
-      loading = false;
-    }
-  });
+	  return () => {
+		window.removeEventListener('profile-updated', handleProfileUpdated);
+	  };
+	});
 
   async function loadSavedPosts() {
     try {
-      savedPosts = await api.getSavedPosts();
+      savedPosts = await api.posts.getSavedPosts();
     } catch (err) {
       error = err.message;
     }
   }
 
+async function loadProfileData() {
+  // Загрузка информации о текущем пользователе
+  userInfo = await api.users.getCurrentUser();
+
+  // Загрузка постов пользователя
+  userPosts = await api.users.getUserPosts(userInfo.id);
+
+  if (user) {
+    await loadSavedPosts();
+  }
+}
+
   async function loadUserImages() {
     try {
       console.log("Loading images for user ID:", userInfo.id);
-      userImages = await api.getUserImages(userInfo.id);
+      userImages = await api.users.getUserImages(userInfo.id);
       console.log("Received user images:", userImages);
 
       // Если массив пустой, добавим дополнительную проверку через прямой fetch
@@ -82,7 +104,7 @@
 
   async function unsavePost(postId) {
     try {
-      await api.unsavePost(postId);
+      await api.posts.unsavePost(postId);
       // Удаляем пост из списка
       savedPosts = savedPosts.filter(post => post.id !== postId);
     } catch (err) {
@@ -95,7 +117,7 @@
 
     imageDeleteLoading = true;
     try {
-      await api.deleteImage(imageId);
+      await api.posts.deleteImage(imageId);
       // Удаляем изображение из списка
       userImages = userImages.filter(img => img.id !== imageId);
     } catch (err) {
@@ -105,42 +127,21 @@
     }
   }
 
-  // Функция для форматирования даты
-  function formatDate(dateString) {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ru', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }).format(date);
-  }
-
-  // Функция для форматирования размера файла
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
-
-	function isAdmin(userId) {
-	  return userId === '1';
-	}
-
 function setTab(tab) {
   activeTab = tab;
 
   // Load admin data when needed
-  if (tab === 'admin' && isAdmin(user.id) && allPosts.length === 0) {
+  if (tab === 'admin' && isAdmin(user) && allPosts.length === 0) {
     loadAllPosts();
   }
 }
 
 async function loadAllPosts() {
-  if (!isAdmin(user.id)) return;
+  if (!isAdmin(user)) return;
 
   loadingAllPosts = true;
   try {
-    allPosts = await api.getPosts();
+    allPosts = await api.posts.getPosts();
     loadingAllPosts = false;
   } catch (err) {
     error = err.message;
@@ -154,7 +155,7 @@ async function deletePost(postId) {
   }
 
   try {
-    await api.deletePost(postId);
+    await api.posts.deletePost(postId);
     // Refresh the list
     allPosts = allPosts.filter(post => post.id !== postId);
   } catch (err) {
@@ -191,10 +192,10 @@ async function deletePost(postId) {
           </div>
 		 <div class="profile-details">
 		  <h2>{userInfo.username}</h2>
-		  {#if isAdmin(userInfo.id)}
+		  {#if isAdmin(user)}
 			<div class="admin-badge">Администратор</div>
 		  {/if}
-		  <p class="profile-email">{userInfo.email}</p>
+		  <p class="profile-email">{maskEmail(userInfo.email)}</p>
             <p class="profile-date">Участник с {formatDate(userInfo.created_at)}</p>
             <div class="token-info">
               <p>Срок действия токена: <strong>{$tokenExpiration} сек.</strong></p>
@@ -230,7 +231,7 @@ async function deletePost(postId) {
 		  </button>
 
 		  <!-- Show admin tab only for user with ID 1 -->
-		  {#if isAdmin(user.id)}
+		  {#if isAdmin(user)}
 			<button
 			  class="tab admin-tab {activeTab === 'admin' ? 'active' : ''}"
 			  on:click={() => setTab('admin')}
@@ -404,18 +405,18 @@ async function deletePost(postId) {
     </div>
   {/if}
 </div>
-
+{#if isAdmin(user)}<DebugHelper />{/if}
 <style>
-	.admin-badge {
-	  display: inline-block;
-	  background-color: #dc3545;
-	  color: white;
-	  padding: 0.25rem 0.5rem;
-	  border-radius: 1rem;
-	  font-size: 0.75rem;
-	  margin-bottom: 0.5rem;
-	}
-	.admin-tab {
+.admin-badge {
+  display: inline-block;
+  background-color: #dc3545;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.admin-tab {
   background-color: #dc3545;
   color: white;
 }
@@ -469,23 +470,6 @@ async function deletePost(postId) {
   gap: 0.5rem;
 }
 
-.admin-edit-btn, .admin-view-btn, .admin-delete-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.85rem;
-  border-radius: 4px;
-  text-decoration: none;
-}
-
-.admin-edit-btn {
-  background-color: #17a2b8;
-  color: white;
-}
-
-.admin-view-btn {
-  background-color: #6c757d;
-  color: white;
-}
-
 .admin-delete-btn {
   background-color: #dc3545;
   color: white;
@@ -515,13 +499,6 @@ async function deletePost(postId) {
     background-color: #f8d7da;
   }
 
-  .error a {
-    display: inline-block;
-    margin-top: 1rem;
-    color: #721c24;
-    font-weight: bold;
-  }
-
   .profile-container {
     background-color: #fff;
     border-radius: 5px;
@@ -531,7 +508,7 @@ async function deletePost(postId) {
 
   .profile-header {
     padding: 2rem;
-    background-color: #f8f9fa;
+    background-color: #bbb;
     border-bottom: 1px solid #dee2e6;
   }
 
@@ -586,32 +563,33 @@ async function deletePost(postId) {
     display: flex;
     border-bottom: 1px solid #dee2e6;
     flex-wrap: wrap;
+	background-color: #eee;
   }
 
   .tab {
-    background: none;
     border: none;
-    padding: 1rem 1.5rem;
+    padding: 0.5rem 0.5rem;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
+    border-bottom: 4px solid transparent;
     transition: all 0.2s;
     font-family: inherit;
     font-size: inherit;
   }
 
   .tab:hover {
-    color: #007bff;
+    color: #555;
     background-color: #f8f9fa;
   }
 
   .tab.active {
-    color: #007bff;
-    border-bottom-color: #007bff;
+    color: #fff;
+    border-bottom-color: #999;
     font-weight: bold;
   }
 
   .profile-content {
     padding: 2rem;
+    background-color: #ddd;
   }
 
   .tab-panel {
@@ -648,21 +626,6 @@ async function deletePost(postId) {
     background-color: #5a6268;
   }
 
-  .create-post-btn {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background-color: #007bff;
-    color: white;
-    text-decoration: none;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-  }
-
-  .create-post-btn:hover {
-    background-color: #0069d9;
-  }
-
   .post-list {
     display: flex;
     flex-direction: column;
@@ -684,16 +647,6 @@ async function deletePost(postId) {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   }
 
-  .post-title {
-    flex: 1;
-  }
-
-  .post-title a {
-    color: #212529;
-    text-decoration: none;
-    font-weight: bold;
-  }
-
   .post-title a:hover {
     color: #007bff;
   }
@@ -707,32 +660,6 @@ async function deletePost(postId) {
   .post-actions {
     display: flex;
     gap: 0.5rem;
-  }
-
-  .edit-btn, .view-btn {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.9rem;
-    text-decoration: none;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-  }
-
-  .edit-btn {
-    background-color: #17a2b8;
-    color: white;
-  }
-
-  .edit-btn:hover {
-    background-color: #138496;
-  }
-
-  .view-btn {
-    background-color: #6c757d;
-    color: white;
-  }
-
-  .view-btn:hover {
-    background-color: #5a6268;
   }
 
   .unsave-btn {
@@ -755,6 +682,7 @@ async function deletePost(postId) {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 1rem;
+    background-color: #eee;
   }
 
   .image-card {
@@ -776,7 +704,7 @@ async function deletePost(postId) {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f8f9fa;
+    background-color: #ddd;
     position: relative;
   }
 
@@ -812,15 +740,6 @@ async function deletePost(postId) {
     margin: 0;
   }
 
-  .image-post a {
-    color: #007bff;
-    text-decoration: none;
-  }
-
-  .image-post a:hover {
-    text-decoration: underline;
-  }
-
   .no-post {
     color: #6c757d;
     font-style: italic;
@@ -843,7 +762,7 @@ async function deletePost(postId) {
   }
 
   .view-image-btn {
-    background-color: #17a2b8;
+    background-color: #bbb;
     color: white;
   }
 
