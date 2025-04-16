@@ -160,101 +160,131 @@ def register():
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
+    """
+    Обновление токенов доступа и refresh при помощи refresh токена.
+    Улучшенная версия с дополнительными проверками безопасности.
+    """
     current_token = get_jwt()
     jti = current_token.get('jti')
     user_id = int(get_jwt_identity())
     session_state = "active"
 
-    # Get device fingerprint from request
+    # Получаем fingerprint из запроса
     device_fingerprint = request.headers.get('X-Device-Fingerprint')
+    if not device_fingerprint:
+        current_app.logger.warning(f"Refresh attempt without fingerprint for user {user_id}")
+        return jsonify({"msg": "Device fingerprint required"}), 400
 
-    # Get client IP and User-Agent for verification
+    # Получаем IP-адрес и User-Agent для проверки
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
 
     user_agent = request.headers.get('User-Agent', '')
 
-    # Get claims from the current token for validation
+    # Получаем данные из текущего токена для валидации
     token_fp_hash = current_token.get('fp_hash')
     token_ip_net = current_token.get('ip_net')
     token_ua_hash = current_token.get('ua_hash')
 
-    # Validate device binding if claims exist (tokens created after upgrade)
+    # КРИТИЧЕСКИ ВАЖНО: Строгая валидация fingerprint для предотвращения атаки подмены
     if token_fp_hash and device_fingerprint:
         current_fp_hash = hashlib.sha256(device_fingerprint.encode()).hexdigest()
         if token_fp_hash != current_fp_hash:
             current_app.logger.warning(f"Refresh rejected: device fingerprint mismatch for user {user_id}")
+            # Записываем событие безопасности
+            SecurityMonitor.record_security_event(
+                user_id=user_id,
+                session_key=current_token.get('session_key'),
+                event_type="refresh_fingerprint_mismatch",
+                request_path=request.path,
+                response_code=403,
+                details={
+                    "token_fp": token_fp_hash[:8] + "...",
+                    "request_fp": current_fp_hash[:8] + "..."
+                }
+            )
             return jsonify({"msg": "Недействительный токен обновления - несоответствие устройства"}), 403
 
-    # Blacklist the current refresh token immediately
+    # Немедленно добавляем текущий refresh токен в черный список
     TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))
 
-    # Get token lifetimes
+    # Получаем настройки времени жизни токенов
     token_lifetime = User.get_token_lifetime(user_id)
     refresh_token_lifetime = User.get_refresh_token_lifetime(user_id)
 
     current_app.logger.debug(
-        f"Refresh using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}")
+        f"Refresh using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}"
+    )
 
-    # Get session info and validate
+    # Получаем информацию о сессии и проводим валидацию
     session_key = current_token.get('session_key')
 
     # Используем тот же session_key вместо создания нового,
     # чтобы избежать создания новой сессии при каждом обновлении токена
     new_session_key = session_key
 
-    csrf_state = f"{secrets.token_hex(16)}:{int(time.time())}"  # Add timestamp
+    # Создаем новый csrf_state с меткой времени
+    csrf_state = f"{secrets.token_hex(16)}:{int(time.time())}"
 
-    # Validate session
+    # Проверяем сессию
     if not session_key or not SessionManager.check_session_valid(session_key):
-        return jsonify({"msg": "Недействительный токен обновления"}), 401
+        current_app.logger.warning(f"Invalid session during refresh: {session_key}")
+        return jsonify({"msg": "Недействительный токен обновления - сессия истекла"}), 401
 
-    # Verify device fingerprint matches the saved one
+    # Проверяем fingerprint
     if device_fingerprint and not SessionManager.validate_fingerprint(session_key, device_fingerprint):
         current_app.logger.warning(f"Fingerprint mismatch during refresh for user {user_id}")
+        # Записываем событие безопасности
+        SecurityMonitor.record_security_event(
+            user_id=user_id,
+            session_key=session_key,
+            event_type="refresh_fingerprint_mismatch",
+            request_path=request.path,
+            response_code=403
+        )
         return jsonify({"msg": "Недействительный токен обновления - несоответствие устройства"}), 403
 
-    # Prepare new claims for the tokens
-    # Create a fingerprint hash for JWT claims if available
+    # Подготовка данных для новых токенов
+    # Создаем хеш fingerprint для JWT claims
     fp_hash = None
     if device_fingerprint:
-        # Create a hash of the fingerprint to include in the token
+        # Создаем хеш fingerprint для токена
         fp_hash = hashlib.sha256(device_fingerprint.encode()).hexdigest()
 
-    # Generate IP network hash for the token
+    # Создаем хеш сети для токена
     ip_network_hash = None
     if client_ip:
         ip_network_hash = SecurityMonitor.get_ip_network_hash(client_ip)
 
-    # Generate User-Agent hash
+    # Создаем хеш User-Agent
     ua_hash = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
 
-    # Create tokens with device-binding claims
+    # Дополнительные данные для токенов с привязкой к устройству
     additional_claims = {
         'jti': str(uuid.uuid4()),
         'session_key': new_session_key,
         'fp_hash': fp_hash,
         'ip_net': ip_network_hash,
         'ua_hash': ua_hash,
-        'created_at': int(time.time())  # Add creation timestamp
+        'created_at': int(time.time())  # Добавляем метку времени создания
     }
 
-    # Create new access token with enhanced claims
+    # Создаем новые токены с усиленными claims
     access_token = create_access_token(
         identity=str(user_id),
         expires_delta=timedelta(seconds=token_lifetime),
         additional_claims=additional_claims
     )
 
-    # Create new refresh token with the same claims
+    # Создаем новый refresh токен с теми же claims
     new_refresh_token = create_refresh_token(
         identity=str(user_id),
         expires_delta=timedelta(seconds=refresh_token_lifetime),
         additional_claims=additional_claims
     )
 
-    # Update session with new CSRF state but keep the same session key
+    # Обновляем сессию с новым CSRF state, сохраняя тот же session_key
     SessionManager.update_session(
         session_key,
         None,  # Не меняем session_key
@@ -263,15 +293,15 @@ def refresh():
         device_fingerprint
     )
 
-    # Further security checks...
+    # Дополнительные проверки безопасности
     SecurityMonitor.track_request_counter(session_key)
     SecurityMonitor.track_activity_pattern(session_key)
 
-    # Get user info for response
+    # Получаем информацию о пользователе для ответа
     user = User.get_by_id(user_id)
     user_dict = dict(user) if user else {}
 
-    # Create response
+    # Создаем ответ
     resp = jsonify({
         "user": {
             "id": user_id,
@@ -281,18 +311,27 @@ def refresh():
         "refresh_token_lifetime": refresh_token_lifetime
     })
 
-    # Set cookies with new tokens
+    # Устанавливаем cookie с новыми токенами
     set_access_cookies(resp, access_token)
-    set_refresh_cookies(resp, new_refresh_token)  # Set the new refresh token
+    set_refresh_cookies(resp, new_refresh_token)
 
-    # Set new CSRF state with timestamp
+    # Устанавливаем новый CSRF state с меткой времени
     resp.set_cookie(
         'csrf_state',
         csrf_state,
         max_age=refresh_token_lifetime,
         secure=current_app.config['JWT_COOKIE_SECURE'],
-        httponly=False,  # Must be accessible by JavaScript
+        httponly=False,  # Должен быть доступен для JavaScript
         samesite=current_app.config['JWT_COOKIE_SAMESITE']
+    )
+
+    # Записываем успешное обновление токена как событие безопасности
+    SecurityMonitor.record_security_event(
+        user_id=user_id,
+        session_key=session_key,
+        event_type="token_refresh_success",
+        request_path=request.path,
+        response_code=200
     )
 
     return resp

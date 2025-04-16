@@ -41,6 +41,15 @@ def configure_logging(app):
     # Add it to app for easy access
     app.logger = logger
 
+    if not app.debug:
+        security_handler = logging.FileHandler('security.log')
+        security_handler.setLevel(logging.WARNING)
+        security_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - [SECURITY] %(levelname)s - %(message)s'
+        )
+        security_handler.setFormatter(security_formatter)
+        app.logger.addHandler(security_handler)
+
     return logger
 
 

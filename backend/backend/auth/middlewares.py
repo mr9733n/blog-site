@@ -396,36 +396,61 @@ def check_if_token_revoked(jwt_header, jwt_payload):
         session_invalid = session_key and not SessionManager.check_session_valid(session_key)
         session_user_mismatch = session_key and not SessionManager.validate_session(session_key, user_id)
 
-        # Device binding validations - ENHANCED
+        # КРИТИЧЕСКИ ВАЖНОЕ ИЗМЕНЕНИЕ: Всегда проверять fingerprint, если он есть в токене
         device_mismatch = False
+        if token_fp_hash and current_fp_hash:
+            # Строгое сравнение отпечатков устройств
+            if token_fp_hash != current_fp_hash:
+                device_mismatch = True
+                current_app.logger.warning(f"🔍 Device fingerprint hash mismatch for user {user_id}")
+                # Немедленно добавляем событие безопасности
+                SecurityMonitor.record_security_event(
+                    user_id=user_id,
+                    session_key=session_key,
+                    event_type="fingerprint_mismatch",
+                    request_path=request.path,
+                    details={"token_hash": token_fp_hash, "request_hash": current_fp_hash[:8] + "..."}
+                )
+                # Для критических операций или админ-маршрутов всегда отклоняем запрос при несовпадении
+                admin_paths = ['/api/admin']
+                sensitive_paths = ['/api/user/update', '/api/settings/token-settings']
+                if any(request.path.startswith(path) for path in admin_paths + sensitive_paths):
+                    return True  # Блокируем токен для чувствительных маршрутов
 
-        # Only enforce if we have the claims AND fingerprint (tokens created after upgrade)
-        if token_fp_hash and current_fp_hash and token_fp_hash != current_fp_hash:
-            device_mismatch = True
-            current_app.logger.warning(f"🔍 Device fingerprint hash mismatch for user {user_id}")
-
-        # IP network validation
+        # IP network validation - более строгая проверка
         network_mismatch = False
         if token_ip_net and current_ip_net and token_ip_net != current_ip_net:
-            # For admin routes, always enforce network validation
+            # Для админ-путей всегда проверяем сеть
             admin_paths = ['/api/admin']
-            is_admin_path = any(request.path.startswith(path) for path in admin_paths)
-
-            # For non-admin routes, be a bit more lenient (only for sensitive operations)
             sensitive_paths = ['/api/user/update', '/api/settings/token-settings']
-            is_sensitive_path = any(request.path.startswith(path) for path in sensitive_paths)
 
-            if is_admin_path or is_sensitive_path:
+            is_sensitive_path = any(request.path.startswith(path) for path in admin_paths + sensitive_paths)
+            if is_sensitive_path:
                 network_mismatch = True
                 current_app.logger.warning(f"🚨 IP network binding mismatch for user {user_id}")
+                # Записываем событие безопасности
+                SecurityMonitor.record_security_event(
+                    user_id=user_id,
+                    session_key=session_key,
+                    event_type="network_mismatch",
+                    request_path=request.path,
+                    details={"token_network": token_ip_net[:8] + "...", "request_network": current_ip_net[:8] + "..."}
+                )
 
-        # User-Agent validation (browser fingerprint)
+        # User-Agent validation - более строгая проверка
         ua_mismatch = False
         if token_ua_hash and token_ua_hash != current_ua_hash:
-            # For admin routes, enforce UA validation
+            # Для админ-маршрутов проверяем User-Agent
             if any(request.path.startswith('/api/admin') for path in ['/api/admin']):
                 ua_mismatch = True
                 current_app.logger.warning(f"🌐 User-Agent mismatch for user {user_id}")
+                # Записываем событие безопасности
+                SecurityMonitor.record_security_event(
+                    user_id=user_id,
+                    session_key=session_key,
+                    event_type="user_agent_mismatch",
+                    request_path=request.path
+                )
 
         # Log security issues
         if is_blacklisted:
@@ -437,18 +462,18 @@ def check_if_token_revoked(jwt_header, jwt_payload):
         if device_mismatch:
             current_app.logger.warning(f"🔍 Device mismatch for user {user_id}")
 
-        # For admin routes, apply stricter validation
+        # Для админ-маршрутов применяем более строгую валидацию
         is_admin_route = request.path.startswith('/api/admin')
         if is_admin_route:
             admin_validation_failed = device_mismatch or network_mismatch or ua_mismatch
             if admin_validation_failed:
                 current_app.logger.warning(f"🛡️ ADMIN ACCESS BLOCKED: Device binding validation failed")
-                return True  # Block the token
+                return True  # Блокируем токен
 
-        # Reject token if any validation fails
+        # Отклоняем токен, если не прошла любая проверка
         return (is_blacklisted or session_invalid or session_user_mismatch or
                 device_mismatch or network_mismatch or ua_mismatch)
     except Exception as e:
         current_app.logger.error(f"Error checking token validity: {e}")
-        # In case of error, deny token to be safe
+        # В случае ошибки отклоняем токен для безопасности
         return True

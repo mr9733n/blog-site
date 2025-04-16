@@ -2,9 +2,10 @@
 import json
 import sqlite3
 from datetime import datetime, timezone, timedelta
-from flask import current_app
+from flask import current_app, request
 
 from backend.models.base import get_db, query_db, commit_db
+from backend.models.security import SecurityMonitor
 
 
 class SessionManager:
@@ -228,7 +229,7 @@ class SessionManager:
     @staticmethod
     def validate_fingerprint(session_key, device_fingerprint):
         """
-        Validate if the provided fingerprint matches the stored one
+        Улучшенная валидация fingerprint, исправляющая уязвимость подмены
 
         Args:
             session_key (str): The session key to check
@@ -238,18 +239,14 @@ class SessionManager:
             bool: True if fingerprints match, False otherwise
         """
         try:
-            # Skip validation if fingerprint column doesn't exist
-            if not SessionManager.ensure_column_exists('device_fingerprint'):
-                current_app.logger.warning("Device fingerprint column doesn't exist")
-                return False  # Fail closed instead of open
-
-            # Skip validation if either input is None/empty
+            # Проверка на наличие обязательных параметров
             if not session_key or not device_fingerprint:
                 current_app.logger.warning("Missing session key or device fingerprint")
                 return False  # Fail closed instead of open
 
+            # Получаем сессию
             session = query_db(
-                'SELECT device_fingerprint FROM user_sessions WHERE session_key = ?',
+                'SELECT * FROM user_sessions WHERE session_key = ?',
                 [session_key],
                 one=True
             )
@@ -258,16 +255,49 @@ class SessionManager:
                 current_app.logger.warning(f"Session not found: {session_key[:8]}")
                 return False
 
-            # Get stored fingerprint from session
+            # Проверяем состояние сессии
+            if session['state'] != 'active':
+                current_app.logger.warning(f"Session is not active: {session_key[:8]}, state: {session['state']}")
+                return False
+
+            # Проверяем срок действия
+            now = datetime.now(timezone.utc).isoformat()
+            if session['expires_at'] < now:
+                current_app.logger.warning(f"Session expired: {session_key[:8]}")
+                return False
+
+            # Получаем сохраненный fingerprint
             stored_fingerprint = session['device_fingerprint'] if 'device_fingerprint' in session else None
 
-            # If stored fingerprint is None, this is likely an old session
+            # Если stored_fingerprint равен None, это, вероятно, старая сессия
             if stored_fingerprint is None:
                 current_app.logger.warning(f"No fingerprint stored for session: {session_key[:8]}")
-                return False  # Fail closed instead of open
+                return False
 
-            # Compare fingerprints
-            return stored_fingerprint == device_fingerprint
+            # Проверяем соответствие fingerprint
+            fingerprint_matches = stored_fingerprint == device_fingerprint
+
+            # Записываем результат проверки
+            if not fingerprint_matches:
+                current_app.logger.warning(f"Fingerprint mismatch for session {session_key[:8]}")
+
+                # Записываем событие безопасности для дальнейшего анализа
+                try:
+
+                    SecurityMonitor.record_security_event(
+                        user_id=session['user_id'],
+                        session_key=session_key,
+                        event_type="fingerprint_mismatch",
+                        request_path=request.path if hasattr(request, 'path') else None,
+                        details={
+                            "stored_fingerprint": stored_fingerprint[:8] + "..." if stored_fingerprint else None,
+                            "provided_fingerprint": device_fingerprint[:8] + "..." if device_fingerprint else None
+                        }
+                    )
+                except Exception as e:
+                    current_app.logger.error(f"Error recording security event: {e}")
+
+            return fingerprint_matches
         except Exception as e:
             current_app.logger.error(f"Error validating fingerprint: {e}")
             # Fail closed for better security
@@ -276,7 +306,7 @@ class SessionManager:
     @staticmethod
     def check_session_valid(session_key, device_fingerprint=None):
         """
-        Comprehensive session validation checking expiration, state, and fingerprint
+        Улучшенная комплексная валидация сессии, проверяющая срок действия, состояние и fingerprint
 
         Args:
             session_key (str): The session key to validate
@@ -286,7 +316,13 @@ class SessionManager:
             bool: True if session is valid, False otherwise
         """
         try:
+            # Проверяем основные параметры
+            if not session_key:
+                return False
+
             now = datetime.now(timezone.utc).isoformat()
+
+            # Получаем информацию о сессии
             session = query_db(
                 'SELECT * FROM user_sessions WHERE session_key = ? AND expires_at > ? AND state = "active"',
                 [session_key, now],
@@ -294,14 +330,25 @@ class SessionManager:
             )
 
             if not session:
+                current_app.logger.warning(f"Invalid session: {session_key[:8] if session_key else 'None'}")
                 return False
 
-            # Fingerprint validation
-            if device_fingerprint and not SessionManager.validate_fingerprint(session_key, device_fingerprint):
-                current_app.logger.warning(f"Session fingerprint mismatch for session {session_key}")
-                return False
+            # Проверка fingerprint, если предоставлен
+            if device_fingerprint:
+                if not SessionManager.validate_fingerprint(session_key, device_fingerprint):
+                    current_app.logger.warning(f"Session fingerprint validation failed for {session_key[:8]}")
+                    return False
+            elif 'device_fingerprint' in session and session['device_fingerprint']:
+                # Если fingerprint требуется для сессии, но не предоставлен в запросе
+                current_app.logger.warning(f"Fingerprint required but not provided for session {session_key[:8]}")
 
-            # Activity check
+                # Для чувствительных маршрутов отклоняем запрос
+                if hasattr(request, 'path'):
+                    sensitive_paths = ['/api/admin', '/api/user/update', '/api/settings']
+                    if any(request.path.startswith(path) for path in sensitive_paths):
+                        return False
+
+            # Проверка активности
             return SessionManager.check_activity(session_key)
         except Exception as e:
             current_app.logger.error(f"Error validating session: {e}")

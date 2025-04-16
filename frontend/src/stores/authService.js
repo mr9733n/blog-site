@@ -313,14 +313,15 @@ export async function refreshToken() {
     if (isRefreshing) {
       console.log('Another refresh is already in progress, waiting for it to complete');
 
+      // Ждем окончания текущего обновления
       return new Promise(resolve => {
         const interval = setInterval(() => {
           tokenRefreshLoading.subscribe(value => {
             if (!value) { // когда обновление завершено
               clearInterval(interval);
-              resolve(true); // Возвращаем true вместо вызова isAuthenticated()
+              resolve(true);
             }
-          })();
+          });
         }, 100);
       });
     }
@@ -331,15 +332,10 @@ export async function refreshToken() {
   lastRefreshAttempt = now;
   console.log('🔄 Attempting token refresh at:', new Date(now).toISOString());
 
-  // Get the latest refresh CSRF token and state
+  // Update CSRF data
   updateCsrfData();
   const refreshCsrfToken = getCsrfToken('refresh');
   const csrfState = getCsrfState();
-
-  if (!refreshCsrfToken) {
-    console.error('❌ No refresh CSRF token available');
-    return false;
-  }
 
   try {
     // Set loading state
@@ -348,17 +344,29 @@ export async function refreshToken() {
     // Get device fingerprint for the request
     const deviceFingerprint = await getDeviceFingerprint();
 
-    // Используем явные заголовки для рефреша
+    // Формируем заголовки для запроса refresh
     const headers = {
-      'X-CSRF-TOKEN': refreshCsrfToken,
+      'Content-Type': 'application/json',
       'X-Device-Fingerprint': deviceFingerprint
     };
 
-    // Добавляем CSRF-STATE, если он доступен
-    if (csrfState) {
-      headers['X-CSRF-STATE'] = csrfState;
+    // Добавляем CSRF токен, если доступен
+    if (refreshCsrfToken) {
+      headers['X-CSRF-TOKEN'] = refreshCsrfToken;
+      console.log(`Using refresh CSRF token: ${refreshCsrfToken.substring(0, 8)}...`);
+    } else {
+      console.warn('No refresh CSRF token available');
     }
 
+    // Добавляем CSRF state, если доступен
+    if (csrfState) {
+      headers['X-CSRF-STATE'] = csrfState;
+      console.log(`Using CSRF state: ${csrfState.substring(0, 8)}...`);
+    } else {
+      console.warn('No CSRF state available');
+    }
+
+    // Выполняем запрос на обновление токена
     const response = await fetch(`${API_URL}/refresh`, {
       method: 'POST',
       credentials: 'include',
@@ -366,53 +374,68 @@ export async function refreshToken() {
       cache: 'no-store' // Prevent caching
     });
 
-    // Если ответ не ok, логируем ошибку подробнее
-    if (!response.ok) {
-      console.error('Token refresh failed with status:', response.status);
-      console.error('Response headers:',
-        Array.from(response.headers.entries()).reduce((obj, [key, val]) => {
-          obj[key] = val;
-          return obj;
-        }, {})
-      );
+    // Логирование для отладки
+    console.log('Refresh response status:', response.status);
 
-      // Попытка получить текст ошибки
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
+    // Логирование всех заголовков ответа
+    const responseHeaders = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    console.log('Refresh response headers:', responseHeaders);
 
-      throw new Error(`Failed to refresh token: ${response.status} ${response.statusText}`);
-    }
+    // Если ответ успешный
+    if (response.ok) {
+      // Обновляем CSRF данные после успешного обновления
+      updateCsrfData();
 
-    // Update CSRF tokens after refresh
-    updateCsrfData();
+      // Получаем информацию о пользователе из ответа, если доступна
+      try {
+        const data = await response.json();
 
-    // Get user info from the response if available
-    try {
-      const data = await response.json();
+        // Обновляем срок жизни токенов в localStorage
+        if (data && data.token_lifetime) {
+          const tokenLifetime = data.token_lifetime;
+          const refreshTokenLifetime = data.refresh_token_lifetime;
+          saveTokenLifetimes(tokenLifetime, refreshTokenLifetime);
+        }
 
-      // Save token lifetimes from response
-      if (data && data.token_lifetime) {
-        const tokenLifetime = data.token_lifetime;
-        const refreshTokenLifetime = data.refresh_token_lifetime;
-        saveTokenLifetimes(tokenLifetime, refreshTokenLifetime);
+        // Обновляем информацию о пользователе
+        if (data && data.user) {
+          userStore.set({ id: data.user.id });
+          saveAuthState(data.user.id);
+        }
+      } catch (jsonError) {
+        console.warn('Could not parse JSON from refresh token response:', jsonError);
+        // Продолжаем, так как cookies могли быть обновлены
       }
 
-      if (data && data.user) {
-        userStore.set({ id: data.user.id });
-        saveAuthState(data.user.id);
-      }
-    } catch (jsonError) {
-      console.warn('Could not parse JSON from refresh token response:', jsonError);
-      // Continue anyway as the cookies may have been set
-    }
+      console.log('✅ Token refreshed successfully');
+      return true;
+    } else {
+      // Логирование ошибки
+      console.error(`Token refresh failed with status: ${response.status}`);
 
-    console.log('✅ Token refreshed successfully');
-    return true;
+      try {
+        // Пытаемся получить подробности ошибки
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+      } catch (e) {
+        console.error('Could not read error response');
+      }
+
+      // Если токен просрочен или недействителен, очищаем состояние авторизации
+      if (response.status === 401 || response.status === 403) {
+        await logout(true);
+      }
+
+      return false;
+    }
   } catch (error) {
     console.error('❌ Error refreshing token:', error);
     return false;
   } finally {
-    // Ensure tokenRefreshLoading is set to false when done
+    // Всегда сбрасываем состояние загрузки
     tokenRefreshLoading.set(false);
   }
 }
