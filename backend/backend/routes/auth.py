@@ -86,6 +86,13 @@ def login():
         device_fingerprint
     )
 
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+        client_ip = client_ip.split(',')[0].strip()
+
+    _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
+
     # Create response with user data and token lifetimes
     resp = jsonify({
         "user": {
@@ -171,6 +178,13 @@ def refresh():
         session_state,
         device_fingerprint
     )
+
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+        client_ip = client_ip.split(',')[0].strip()
+
+    _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
 
     # Record this request for security monitoring
     SecurityMonitor.track_request_counter(session_key)

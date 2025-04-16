@@ -48,7 +48,7 @@ def register_auth_middlewares(app):
 def log_request_info():
     """Log basic request information for debugging"""
     if 'Cookie' in request.headers:
-        current_app.logger.debug(f"DEBUG: Auth header received: {request.headers['Cookie'][:20]}...")
+        current_app.logger.debug(f"DEBUG: Auth header received: {request.headers['Cookie']}...")
     else:
         current_app.logger.warning("DEBUG: No Authorization header in request")
         current_app.logger.debug(f"DEBUG: Available headers: {list(request.headers.keys())}")
@@ -174,8 +174,12 @@ def detect_network_changes():
         if not session_key:
             return
 
-        # Get client IP and check for changes
-        client_ip = request.remote_addr
+        # Get real client IP (taking into account proxies)
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if client_ip and ',' in client_ip:
+            # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+            client_ip = client_ip.split(',')[0].strip()
+
         _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
 
         # Store result in flask g object for other middlewares to use
@@ -192,7 +196,6 @@ def detect_network_changes():
     except:
         # Continue if we can't check network changes
         pass
-
 
 def analyze_request_patterns():
     """Analyze request patterns for unusual activity"""
@@ -315,6 +318,12 @@ def check_if_token_revoked(jwt_header, jwt_payload):
     session_key = jwt_payload.get('session_key')
     user_id = jwt_payload.get('sub')
 
+    # Get real client IP (taking into account proxies)
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+        client_ip = client_ip.split(',')[0].strip()
+
     # Get device fingerprint from request
     device_fingerprint = request.headers.get('X-Device-Fingerprint')
 
@@ -332,6 +341,19 @@ def check_if_token_revoked(jwt_header, jwt_payload):
             fingerprint_match = SessionManager.validate_fingerprint(session_key, device_fingerprint)
             fingerprint_mismatch = not fingerprint_match
 
+        # Network validation - solo para rutas sensibles
+        network_mismatch = False
+        if session_key and client_ip:
+            _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
+
+            # Solo bloquear si la ruta es sensible
+            if network_changed:
+                sensitive_paths = ['/api/user/update', '/api/settings/token-settings', '/api/admin']
+                network_mismatch = any(request.path.startswith(path) for path in sensitive_paths)
+                current_app.logger.warning(f"🚨 IP network change detected for user {user_id}")
+            else:
+                network_mismatch = False
+
         # Log security issues
         if is_blacklisted:
             current_app.logger.warning(f"🔒 Blocked token with jti={jti} attempted use")
@@ -341,9 +363,12 @@ def check_if_token_revoked(jwt_header, jwt_payload):
             current_app.logger.warning(f"👤 Session-user mismatch: {session_key} for user {user_id}")
         if fingerprint_mismatch:
             current_app.logger.warning(f"🔍 Device fingerprint mismatch for user {user_id}")
+            sensitive_paths = ['/api/admin', '/api/user/update', '/api/settings']
+            if any(request.path.startswith(path) for path in sensitive_paths):
+                current_app.logger.warning(f"🔒 Access blocked: fingerprint mismatch for sensitive resource")
 
         # Reject token if any validation fails
-        return is_blacklisted or session_invalid or session_user_mismatch or fingerprint_mismatch
+        return is_blacklisted or session_invalid or session_user_mismatch or fingerprint_mismatch or network_mismatch
     except Exception as e:
         current_app.logger.error(f"Error checking token validity: {e}")
         # In case of error, deny token to be safe

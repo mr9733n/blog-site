@@ -3,7 +3,7 @@ import json
 import hashlib
 import sqlite3
 from datetime import datetime, timezone
-from flask import current_app
+from flask import current_app, request
 
 from backend.models.base import get_db, query_db, commit_db
 
@@ -118,31 +118,47 @@ class SecurityMonitor:
         """
         try:
             if '.' in ip_address:  # IPv4
-                # Get first two octets (network class)
                 parts = ip_address.split('.')
-                if len(parts) >= 2:
-                    network_class = f"{parts[0]}.{parts[1]}"
-                    return hashlib.sha256(network_class.encode()).hexdigest()
+                if len(parts) >= 3:
+                    # Para redes privadas (10.x.x.x, 172.16-31.x.x, 192.168.x.x) incluir más octetos
+                    first_octet = int(parts[0])
+                    if (first_octet == 10 or
+                            (first_octet == 172 and 16 <= int(parts[1]) <= 31) or
+                            (first_octet == 192 and int(parts[1]) == 168)):
+                        # Para redes privadas, usamos 3 octetos para mejor precisión
+                        network_class = f"{parts[0]}.{parts[1]}.{parts[2]}"
+                    else:
+                        # Para IPs públicas, mantenemos 2 octetos
+                        network_class = f"{parts[0]}.{parts[1]}"
+
+                    # Añadimos el User-Agent al hash para mejorar la singularidad
+                    user_agent = request.headers.get('User-Agent', '')
+                    hash_input = f"{network_class}|{user_agent}"
+                    return hashlib.sha256(hash_input.encode()).hexdigest()
+
             elif ':' in ip_address:  # IPv6
-                # Get first 4 components of IPv6
                 parts = ip_address.split(':')
                 if len(parts) >= 4:
                     network_class = ':'.join(parts[:4])
-                    return hashlib.sha256(network_class.encode()).hexdigest()
+                    # También añadimos User-Agent aquí
+                    user_agent = request.headers.get('User-Agent', '')
+                    hash_input = f"{network_class}|{user_agent}"
+                    return hashlib.sha256(hash_input.encode()).hexdigest()
             return None
         except Exception as e:
             current_app.logger.error(f"Error generating IP network hash: {e}")
             return None
 
     @staticmethod
-    def check_network_change(session_key, ip_address):
+    def check_network_change(session_key, ip_address, strict_mode=False):
         """
         Check if the network has changed significantly from previous requests
-        With fix for empty/null values
+        With fix for empty/null values and different levels of strictness
 
         Args:
             session_key (str): The session key to check
             ip_address (str): Current IP address
+            strict_mode (bool): If True, even minor network changes trigger protection
 
         Returns:
             tuple: (success, changed) - indicates success and if network changed
