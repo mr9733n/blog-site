@@ -20,6 +20,11 @@ def init_auth(app):
     # Initialize JWT manager
     jwt = JWTManager(app)
 
+    app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
+    app.config["JWT_ACCESS_COOKIE_PATH"] = "/"
+    app.config["JWT_REFRESH_COOKIE_PATH"] = "/"
+    app.config["JWT_COOKIE_DOMAIN"] = None  # Используйте None для текущего домена
+
     # Setup JWT handlers
     setup_jwt_handlers(jwt)
 

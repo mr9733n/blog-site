@@ -10,6 +10,8 @@ from backend.models.token_blacklist import TokenBlacklist
 from backend.models.session import SessionManager
 from backend.models.security import SecurityMonitor
 
+from backend.routes.admin import admin_security_check
+
 
 # ============================================================================
 # Basic Authentication Middlewares
@@ -22,6 +24,9 @@ def register_auth_middlewares(app):
     Args:
         app: Flask application instance
     """
+
+    # don't apply admin security check globally
+    # app.before_request(admin_security_check)
     # Register all middleware functions with the app
     app.before_request(log_request_info)
     app.before_request(check_user_blocked)
@@ -48,7 +53,7 @@ def register_auth_middlewares(app):
 def log_request_info():
     """Log basic request information for debugging"""
     if 'Cookie' in request.headers:
-        current_app.logger.debug(f"DEBUG: Auth header received: {request.headers['Cookie'][:20]}...")
+        current_app.logger.debug(f"DEBUG: Auth header received: {request.headers['Cookie']}...")
     else:
         current_app.logger.warning("DEBUG: No Authorization header in request")
         current_app.logger.debug(f"DEBUG: Available headers: {list(request.headers.keys())}")
@@ -74,15 +79,53 @@ def check_user_blocked():
 
 def check_csrf():
     """Validate CSRF state matches between cookie and header"""
-    # Only check for non-GET, non-login requests
-    if request.method not in ['POST', 'PUT', 'DELETE', 'PATCH'] or request.path.endswith('/login'):
+    # Skip for OPTIONS requests (CORS preflight)
+    if request.method == 'OPTIONS':
         return
 
+    # Only check for non-GET, non-OPTIONS requests
+    if request.method not in ['POST', 'PUT', 'DELETE', 'PATCH']:
+        return
+
+    # Allow login without CSRF (first request)
+    if request.path.endswith('/login') or request.path.endswith('/register'):
+        return
+
+    # Get CSRF tokens from different locations
     csrf_from_cookie = request.cookies.get('csrf_state')
     csrf_from_header = request.headers.get('X-CSRF-STATE')
 
-    if not csrf_from_cookie or not csrf_from_header or csrf_from_cookie != csrf_from_header:
-        return jsonify({"msg": "CSRF-защита обнаружила проблему"}), 403
+    # Detailed logging for debugging
+    if not csrf_from_cookie and not csrf_from_header:
+        current_app.logger.warning(f"CSRF validation failed: No CSRF token in cookie or header")
+        return jsonify({"msg": "CSRF-защита: отсутствует токен"}), 403
+
+    if not csrf_from_cookie:
+        current_app.logger.warning(f"CSRF validation failed: No CSRF token in cookie")
+        return jsonify({"msg": "CSRF-защита: отсутствует токен в cookie"}), 403
+
+    if not csrf_from_header:
+        current_app.logger.warning(f"CSRF validation failed: No CSRF token in header")
+        return jsonify({"msg": "CSRF-защита: отсутствует токен в заголовке"}), 403
+
+    # Validate tokens match
+    if csrf_from_cookie != csrf_from_header:
+        current_app.logger.warning(f"CSRF validation failed: Token mismatch")
+        return jsonify({"msg": "CSRF-защита: несоответствие токенов"}), 403
+
+    # Check if token is expired (if using timestamp format)
+    if ':' in csrf_from_cookie:
+        try:
+            token_parts = csrf_from_cookie.split(':')
+            if len(token_parts) == 2:
+                timestamp = int(token_parts[1])
+                # Check if token is extremely old (1 day+) - potential stolen token
+                if time.time() - timestamp > 86400:  # 24 hours
+                    current_app.logger.warning(f"CSRF validation failed: Token too old")
+                    return jsonify({"msg": "CSRF-защита: устаревший токен"}), 403
+        except Exception as e:
+            current_app.logger.error(f"Error parsing CSRF timestamp: {e}")
+            # Continue if we can't parse timestamp
 
 
 def rotate_csrf_tokens():
@@ -174,8 +217,12 @@ def detect_network_changes():
         if not session_key:
             return
 
-        # Get client IP and check for changes
-        client_ip = request.remote_addr
+        # Get real client IP (taking into account proxies)
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if client_ip and ',' in client_ip:
+            # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+            client_ip = client_ip.split(',')[0].strip()
+
         _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
 
         # Store result in flask g object for other middlewares to use
@@ -192,7 +239,6 @@ def detect_network_changes():
     except:
         # Continue if we can't check network changes
         pass
-
 
 def analyze_request_patterns():
     """Analyze request patterns for unusual activity"""
@@ -315,8 +361,32 @@ def check_if_token_revoked(jwt_header, jwt_payload):
     session_key = jwt_payload.get('session_key')
     user_id = jwt_payload.get('sub')
 
+    # Extract token binding claims
+    token_fp_hash = jwt_payload.get('fp_hash')
+    token_ip_net = jwt_payload.get('ip_net')
+    token_ua_hash = jwt_payload.get('ua_hash')
+
+    # Get real client IP (taking into account proxies)
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+        client_ip = client_ip.split(',')[0].strip()
+
     # Get device fingerprint from request
     device_fingerprint = request.headers.get('X-Device-Fingerprint')
+
+    # Calculate current request fingerprint hash
+    current_fp_hash = None
+    if device_fingerprint:
+        current_fp_hash = hashlib.sha256(device_fingerprint.encode()).hexdigest()
+
+    # Calculate current IP network hash
+    current_ip_net = None
+    if client_ip:
+        current_ip_net = SecurityMonitor.get_ip_network_hash(client_ip)
+
+    # Calculate current User-Agent hash
+    current_ua_hash = hashlib.sha256(request.headers.get('User-Agent', '').encode()).hexdigest()[:16]
 
     try:
         # Basic token validation
@@ -326,11 +396,61 @@ def check_if_token_revoked(jwt_header, jwt_payload):
         session_invalid = session_key and not SessionManager.check_session_valid(session_key)
         session_user_mismatch = session_key and not SessionManager.validate_session(session_key, user_id)
 
-        # Fingerprint validation
-        fingerprint_mismatch = False
-        if session_key and device_fingerprint:
-            fingerprint_match = SessionManager.validate_fingerprint(session_key, device_fingerprint)
-            fingerprint_mismatch = not fingerprint_match
+        # КРИТИЧЕСКИ ВАЖНОЕ ИЗМЕНЕНИЕ: Всегда проверять fingerprint, если он есть в токене
+        device_mismatch = False
+        if token_fp_hash and current_fp_hash:
+            # Строгое сравнение отпечатков устройств
+            if token_fp_hash != current_fp_hash:
+                device_mismatch = True
+                current_app.logger.warning(f"🔍 Device fingerprint hash mismatch for user {user_id}")
+                # Немедленно добавляем событие безопасности
+                SecurityMonitor.record_security_event(
+                    user_id=user_id,
+                    session_key=session_key,
+                    event_type="fingerprint_mismatch",
+                    request_path=request.path,
+                    details={"token_hash": token_fp_hash, "request_hash": current_fp_hash[:8] + "..."}
+                )
+                # Для критических операций или админ-маршрутов всегда отклоняем запрос при несовпадении
+                admin_paths = ['/api/admin']
+                sensitive_paths = ['/api/user/update', '/api/settings/token-settings']
+                if any(request.path.startswith(path) for path in admin_paths + sensitive_paths):
+                    return True  # Блокируем токен для чувствительных маршрутов
+
+        # IP network validation - более строгая проверка
+        network_mismatch = False
+        if token_ip_net and current_ip_net and token_ip_net != current_ip_net:
+            # Для админ-путей всегда проверяем сеть
+            admin_paths = ['/api/admin']
+            sensitive_paths = ['/api/user/update', '/api/settings/token-settings']
+
+            is_sensitive_path = any(request.path.startswith(path) for path in admin_paths + sensitive_paths)
+            if is_sensitive_path:
+                network_mismatch = True
+                current_app.logger.warning(f"🚨 IP network binding mismatch for user {user_id}")
+                # Записываем событие безопасности
+                SecurityMonitor.record_security_event(
+                    user_id=user_id,
+                    session_key=session_key,
+                    event_type="network_mismatch",
+                    request_path=request.path,
+                    details={"token_network": token_ip_net[:8] + "...", "request_network": current_ip_net[:8] + "..."}
+                )
+
+        # User-Agent validation - более строгая проверка
+        ua_mismatch = False
+        if token_ua_hash and token_ua_hash != current_ua_hash:
+            # Для админ-маршрутов проверяем User-Agent
+            if any(request.path.startswith('/api/admin') for path in ['/api/admin']):
+                ua_mismatch = True
+                current_app.logger.warning(f"🌐 User-Agent mismatch for user {user_id}")
+                # Записываем событие безопасности
+                SecurityMonitor.record_security_event(
+                    user_id=user_id,
+                    session_key=session_key,
+                    event_type="user_agent_mismatch",
+                    request_path=request.path
+                )
 
         # Log security issues
         if is_blacklisted:
@@ -339,12 +459,21 @@ def check_if_token_revoked(jwt_header, jwt_payload):
             current_app.logger.warning(f"🔑 Invalid session key: {session_key}")
         if session_user_mismatch:
             current_app.logger.warning(f"👤 Session-user mismatch: {session_key} for user {user_id}")
-        if fingerprint_mismatch:
-            current_app.logger.warning(f"🔍 Device fingerprint mismatch for user {user_id}")
+        if device_mismatch:
+            current_app.logger.warning(f"🔍 Device mismatch for user {user_id}")
 
-        # Reject token if any validation fails
-        return is_blacklisted or session_invalid or session_user_mismatch or fingerprint_mismatch
+        # Для админ-маршрутов применяем более строгую валидацию
+        is_admin_route = request.path.startswith('/api/admin')
+        if is_admin_route:
+            admin_validation_failed = device_mismatch or network_mismatch or ua_mismatch
+            if admin_validation_failed:
+                current_app.logger.warning(f"🛡️ ADMIN ACCESS BLOCKED: Device binding validation failed")
+                return True  # Блокируем токен
+
+        # Отклоняем токен, если не прошла любая проверка
+        return (is_blacklisted or session_invalid or session_user_mismatch or
+                device_mismatch or network_mismatch or ua_mismatch)
     except Exception as e:
         current_app.logger.error(f"Error checking token validity: {e}")
-        # In case of error, deny token to be safe
+        # В случае ошибки отклоняем токен для безопасности
         return True

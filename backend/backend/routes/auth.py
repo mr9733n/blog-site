@@ -1,6 +1,8 @@
 # backend/routes/auth.py
+import time
 import uuid
 import secrets
+import hashlib
 
 from flask import Blueprint, request, jsonify, current_app, make_response
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, \
@@ -58,22 +60,42 @@ def login():
     current_app.logger.debug(
         f"Login using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}")
 
-    # Create tokens
+    # Create a fingerprint hash for JWT claims if available
+    fp_hash = None
+    if device_fingerprint:
+        # Create a hash of the fingerprint to include in the token
+        fp_hash = hashlib.sha256(device_fingerprint.encode()).hexdigest()
+
+    # Get client IP info for the token
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+        client_ip = client_ip.split(',')[0].strip()
+
+    # Generate IP network hash for the token
+    ip_network_hash = None
+    if client_ip:
+        ip_network_hash = SecurityMonitor.get_ip_network_hash(client_ip)
+
+    additional_claims = {
+        'jti': str(uuid.uuid4()),
+        'session_key': session_key,
+        'fp_hash': fp_hash,  # Add fingerprint hash as claim
+        'ip_net': ip_network_hash,  # Add IP network hash as claim
+        'ua_hash': hashlib.sha256(request.headers.get('User-Agent', '').encode()).hexdigest()[:16]  # User agent hash
+    }
+
+    # Create tokens with the enhanced claims
     access_token = create_access_token(
-        identity=user_id_str,  # Explicitly as string
+        identity=user_id_str,
         expires_delta=timedelta(seconds=token_lifetime),
-        additional_claims={
-            'jti': str(uuid.uuid4()),
-            'session_key': session_key
-        }
+        additional_claims=additional_claims
     )
 
     refresh_token = create_refresh_token(
-        identity=user_id_str,  # Also ensure this is a string
+        identity=user_id_str,
         expires_delta=timedelta(seconds=refresh_token_lifetime),
-        additional_claims={
-            'session_key': session_key  # Также добавляем в refresh токен
-        }
+        additional_claims=additional_claims
     )
 
     # Store session with device fingerprint - CHANGED FROM TokenBlacklist to SessionManager
@@ -85,6 +107,13 @@ def login():
         (datetime.now(timezone.utc) + timedelta(seconds=refresh_token_lifetime)).isoformat(),
         device_fingerprint
     )
+
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        # If multiple IPs in X-Forwarded-For, take the first one (client IP)
+        client_ip = client_ip.split(',')[0].strip()
+
+    _, network_changed = SecurityMonitor.check_network_change(session_key, client_ip)
 
     # Create response with user data and token lifetimes
     resp = jsonify({
@@ -131,68 +160,148 @@ def register():
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
+    """
+    Обновление токенов доступа и refresh при помощи refresh токена.
+    Улучшенная версия с дополнительными проверками безопасности.
+    """
     current_token = get_jwt()
     jti = current_token.get('jti')
     user_id = int(get_jwt_identity())
     session_state = "active"
 
-    # Get device fingerprint from request
+    # Получаем fingerprint из запроса
     device_fingerprint = request.headers.get('X-Device-Fingerprint')
+    if not device_fingerprint:
+        current_app.logger.warning(f"Refresh attempt without fingerprint for user {user_id}")
+        return jsonify({"msg": "Device fingerprint required"}), 400
 
-    # Блокируем refresh токен
+    # Получаем IP-адрес и User-Agent для проверки
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+
+    user_agent = request.headers.get('User-Agent', '')
+
+    # Получаем данные из текущего токена для валидации
+    token_fp_hash = current_token.get('fp_hash')
+    token_ip_net = current_token.get('ip_net')
+    token_ua_hash = current_token.get('ua_hash')
+
+    # КРИТИЧЕСКИ ВАЖНО: Строгая валидация fingerprint для предотвращения атаки подмены
+    if token_fp_hash and device_fingerprint:
+        current_fp_hash = hashlib.sha256(device_fingerprint.encode()).hexdigest()
+        if token_fp_hash != current_fp_hash:
+            current_app.logger.warning(f"Refresh rejected: device fingerprint mismatch for user {user_id}")
+            # Записываем событие безопасности
+            SecurityMonitor.record_security_event(
+                user_id=user_id,
+                session_key=current_token.get('session_key'),
+                event_type="refresh_fingerprint_mismatch",
+                request_path=request.path,
+                response_code=403,
+                details={
+                    "token_fp": token_fp_hash[:8] + "...",
+                    "request_fp": current_fp_hash[:8] + "..."
+                }
+            )
+            return jsonify({"msg": "Недействительный токен обновления - несоответствие устройства"}), 403
+
+    # Немедленно добавляем текущий refresh токен в черный список
     TokenBlacklist.blacklist_token(jti, user_id, current_token.get('exp'))
 
-    # Получаем сроки жизни токенов через вспомогательные методы
+    # Получаем настройки времени жизни токенов
     token_lifetime = User.get_token_lifetime(user_id)
     refresh_token_lifetime = User.get_refresh_token_lifetime(user_id)
 
-    # Debug logging
     current_app.logger.debug(
-        f"Refresh using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}")
+        f"Refresh using token_lifetime: {token_lifetime}, refresh_token_lifetime: {refresh_token_lifetime}"
+    )
 
+    # Получаем информацию о сессии и проводим валидацию
     session_key = current_token.get('session_key')
-    new_session_key = secrets.token_hex(16)
-    csrf_state = secrets.token_hex(16)
 
-    # CHANGED: Use SessionManager instead of TokenBlacklist
+    # Используем тот же session_key вместо создания нового,
+    # чтобы избежать создания новой сессии при каждом обновлении токена
+    new_session_key = session_key
+
+    # Создаем новый csrf_state с меткой времени
+    csrf_state = f"{secrets.token_hex(16)}:{int(time.time())}"
+
+    # Проверяем сессию
     if not session_key or not SessionManager.check_session_valid(session_key):
-        return jsonify({"msg": "Недействительный токен обновления"}), 401
+        current_app.logger.warning(f"Invalid session during refresh: {session_key}")
+        return jsonify({"msg": "Недействительный токен обновления - сессия истекла"}), 401
 
-    # Verify device fingerprint matches the saved one - CHANGED: Use SessionManager
+    # Проверяем fingerprint
     if device_fingerprint and not SessionManager.validate_fingerprint(session_key, device_fingerprint):
         current_app.logger.warning(f"Fingerprint mismatch during refresh for user {user_id}")
+        # Записываем событие безопасности
+        SecurityMonitor.record_security_event(
+            user_id=user_id,
+            session_key=session_key,
+            event_type="refresh_fingerprint_mismatch",
+            request_path=request.path,
+            response_code=403
+        )
         return jsonify({"msg": "Недействительный токен обновления - несоответствие устройства"}), 403
 
-    # Update session with new key and same fingerprint - CHANGED: Use SessionManager
+    # Подготовка данных для новых токенов
+    # Создаем хеш fingerprint для JWT claims
+    fp_hash = None
+    if device_fingerprint:
+        # Создаем хеш fingerprint для токена
+        fp_hash = hashlib.sha256(device_fingerprint.encode()).hexdigest()
+
+    # Создаем хеш сети для токена
+    ip_network_hash = None
+    if client_ip:
+        ip_network_hash = SecurityMonitor.get_ip_network_hash(client_ip)
+
+    # Создаем хеш User-Agent
+    ua_hash = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
+
+    # Дополнительные данные для токенов с привязкой к устройству
+    additional_claims = {
+        'jti': str(uuid.uuid4()),
+        'session_key': new_session_key,
+        'fp_hash': fp_hash,
+        'ip_net': ip_network_hash,
+        'ua_hash': ua_hash,
+        'created_at': int(time.time())  # Добавляем метку времени создания
+    }
+
+    # Создаем новые токены с усиленными claims
+    access_token = create_access_token(
+        identity=str(user_id),
+        expires_delta=timedelta(seconds=token_lifetime),
+        additional_claims=additional_claims
+    )
+
+    # Создаем новый refresh токен с теми же claims
+    new_refresh_token = create_refresh_token(
+        identity=str(user_id),
+        expires_delta=timedelta(seconds=refresh_token_lifetime),
+        additional_claims=additional_claims
+    )
+
+    # Обновляем сессию с новым CSRF state, сохраняя тот же session_key
     SessionManager.update_session(
         session_key,
-        new_session_key,
+        None,  # Не меняем session_key
         csrf_state,
         session_state,
         device_fingerprint
     )
 
-    # Record this request for security monitoring
+    # Дополнительные проверки безопасности
     SecurityMonitor.track_request_counter(session_key)
     SecurityMonitor.track_activity_pattern(session_key)
 
-    # Создаем новый access токен
-    access_token = create_access_token(
-        identity=str(user_id),
-        expires_delta=timedelta(seconds=token_lifetime),
-        additional_claims={
-            'jti': str(uuid.uuid4()),
-            'session_key': new_session_key
-        }
-    )
-
-    # Get user info for response
+    # Получаем информацию о пользователе для ответа
     user = User.get_by_id(user_id)
-
-    # Convert sqlite3.Row to dict before accessing with get()
     user_dict = dict(user) if user else {}
 
-    # Create response with token lifetimes
+    # Создаем ответ
     resp = jsonify({
         "user": {
             "id": user_id,
@@ -202,16 +311,27 @@ def refresh():
         "refresh_token_lifetime": refresh_token_lifetime
     })
 
-    # Set cookie with new access token
+    # Устанавливаем cookie с новыми токенами
     set_access_cookies(resp, access_token)
+    set_refresh_cookies(resp, new_refresh_token)
 
+    # Устанавливаем новый CSRF state с меткой времени
     resp.set_cookie(
         'csrf_state',
         csrf_state,
         max_age=refresh_token_lifetime,
         secure=current_app.config['JWT_COOKIE_SECURE'],
-        httponly=False,  # Доступно для JavaScript
+        httponly=False,  # Должен быть доступен для JavaScript
         samesite=current_app.config['JWT_COOKIE_SAMESITE']
+    )
+
+    # Записываем успешное обновление токена как событие безопасности
+    SecurityMonitor.record_security_event(
+        user_id=user_id,
+        session_key=session_key,
+        event_type="token_refresh_success",
+        request_path=request.path,
+        response_code=200
     )
 
     return resp
@@ -317,3 +437,57 @@ def logout():
     unset_jwt_cookies(resp)
 
     return resp
+
+@auth_bp.route('/token-info', methods=['GET'])
+def token_info():
+    """Endpoint for debugging token information"""
+    # Collect information about cookies
+    cookies = {}
+    for name, value in request.cookies.items():
+        # Mask sensitive values
+        if 'token' in name.lower():
+            cookies[name] = f"{value[:8]}..." if value else None
+        else:
+            cookies[name] = value
+
+    # Collect information about CSRF tokens
+    csrf_info = {
+        'csrf_access_cookie': request.cookies.get('csrf_access_token', None),
+        'csrf_refresh_cookie': request.cookies.get('csrf_refresh_token', None),
+        'csrf_state_cookie': request.cookies.get('csrf_state', None),
+        'csrf_header': request.headers.get('X-CSRF-TOKEN', None),
+        'csrf_state_header': request.headers.get('X-CSRF-STATE', None),
+    }
+
+    # Collect request headers
+    headers = {}
+    for name, value in request.headers.items():
+        # Skip sensitive headers
+        if name.lower() in ['cookie', 'authorization']:
+            continue
+        headers[name] = value
+
+    response_data = {
+        'message': 'Token debug information',
+        'cookies': cookies,
+        'csrf_info': csrf_info,
+        'request_headers': headers,
+        'server_time': datetime.now(timezone.utc).isoformat()
+    }
+
+    # Add authentication status
+    try:
+        # Try to verify JWT without cookie/header errors
+        jwt_data = get_jwt()
+        response_data['authenticated'] = True
+        response_data['jwt_info'] = {
+            'user_id': jwt_data.get('sub'),
+            'jti': jwt_data.get('jti'),
+            'session_key': jwt_data.get('session_key', None)[:8] + '...' if jwt_data.get('session_key') else None,
+            'exp': datetime.fromtimestamp(jwt_data.get('exp')).isoformat() if jwt_data.get('exp') else None
+        }
+    except Exception as e:
+        response_data['authenticated'] = False
+        response_data['auth_error'] = str(e)
+
+    return jsonify(response_data)
