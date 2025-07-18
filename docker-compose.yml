@@ -33,7 +33,8 @@ services:
     container_name: blog-nginx
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./ssl:/etc/nginx/ssl
+      - /home/kudo/ca/blog/fullchain1.pem:/etc/ssl/certs/fullchain.pem:ro
+      - /home/kudo/ca/blog/privkey1.pem:/etc/ssl/private/privkey.pem:ro
     ports:
       - "36166:80"
       - "36167:443"
