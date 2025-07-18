@@ -43,12 +43,12 @@ async function fetchPosts() {
 </script>
 
 <div class="home">
-  <h1>Последние записи блога</h1>
+  <h1>...</h1>
 
   {#if loading}
     <div class="loading-container">
       <div class="loading-spinner"></div>
-      <p>Загрузка постов...</p>
+      <p>Loading...</p>
     </div>
   {:else if error}
     <div class="alert alert-danger">

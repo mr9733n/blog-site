@@ -77,7 +77,7 @@
     <div class="container nav-container">
       <div class="nav-left">
         <div class="brand">
-          <Link to="/" on:click={handleLinkClick}>My Blog</Link>
+          <Link to="/" on:click={handleLinkClick}>Kishie 鬼紙衛 | My Blog</Link>
         </div>
       </div>
 
@@ -123,7 +123,7 @@
 
   <footer>
     <div class="container">
-      <p>&copy; 2025 My Blog. All rights reserved.</p>
+      <p>&copy; 2025 Kishie 鬼紙衛 | My Blog. All rights reserved.</p>
     </div>
   </footer>
 </Router>
